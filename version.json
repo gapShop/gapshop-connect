@@ -1,0 +1,9 @@
+{
+    "version": "1.0.7",
+    "requires": "6.0",
+    "tested": "6.7",
+    "download_url": "https://github.com/CCancelo/gapshop-wordpress-plugin/releases/latest/download/gapshop.zip",
+    "sections": {
+        "changelog": "Initial release."
+    }
+}

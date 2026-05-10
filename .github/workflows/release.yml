@@ -1,0 +1,29 @@
+name: Release Plugin
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=$(jq -r .version version.json)" >> $GITHUB_OUTPUT
+
+      - name: Build zip
+        run: |
+          cd gapshop
+          zip -r ../gapshop.zip .
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          name: gapShop Plugin v${{ steps.version.outputs.VERSION }}
+          files: gapshop.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
