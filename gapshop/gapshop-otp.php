@@ -72,18 +72,6 @@ function gapshop_otp_enqueue_script(string $redirect): void {
     ]);
 }
 
-// ── Login Form Hooks ──────────────────────────────────────────
-
-add_action('login_form', function (): void {
-    if (!get_option('gapshop_otp_enabled')) return;
-    echo '<div id="gs-otp-container" data-context="wp"></div>';
-});
-
-add_action('woocommerce_login_form_start', function (): void {
-    if (!get_option('gapshop_otp_enabled')) return;
-    echo '<div id="gs-otp-container" data-context="woo"></div>';
-});
-
 // ── AJAX: Send OTP ────────────────────────────────────────────
 
 add_action('wp_ajax_nopriv_gapshop_otp_send', 'gapshop_handle_otp_send');
