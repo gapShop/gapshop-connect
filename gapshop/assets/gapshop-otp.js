@@ -1,5 +1,6 @@
 (function ($) {
     'use strict';
+    console.log('gapshop-otp loaded, body classes:', $('body').attr('class'));
 
     let _email = '';
 
