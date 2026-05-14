@@ -62,8 +62,8 @@ function gapshop_otp_enqueue_script(string $redirect): void {
         'gapshop-otp',
         plugin_dir_url(__FILE__) . 'assets/gapshop-otp.js',
         ['jquery'],
-        '1.0.1',
-        true
+        '1.0.2',
+        false
     );
     wp_localize_script('gapshop-otp', 'gapshopOtp', [
         'ajaxUrl'  => admin_url('admin-ajax.php'),
