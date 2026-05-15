@@ -131,15 +131,28 @@
             }
         });
 
-        // Add search icon to nav if not already present
+        // Add search icon into nav menu list
         if ($('.gs-search-trigger').length === 0) {
-            $('nav, .site-header, .main-navigation').first().append(
-                `<button class="gs-search-trigger" aria-label="Search" title="Search">
+            const $menuUl = $('nav ul, .site-header ul, .main-navigation ul').first();
+            if ($menuUl.length) {
+                $menuUl.append(
+                    `<li class="gs-search-menu-item" style="list-style:none;display:flex;align-items:center">
+                <button class="gs-search-trigger" aria-label="Search" title="Search">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                     </svg>
-                </button>`
-            );
+                </button>
+            </li>`
+                );
+            } else {
+                $('nav, .site-header, .main-navigation').first().append(
+                    `<button class="gs-search-trigger" aria-label="Search" title="Search">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+            </button>`
+                );
+            }
         }
         $(document).on('click', '.gs-search-trigger', openOverlay);
     });
