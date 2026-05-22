@@ -924,28 +924,10 @@ function gapshop_sc_cart($atts) {
 
 add_shortcode('gapshop_checkout', 'gapshop_sc_checkout');
 function gapshop_sc_checkout($atts) {
-    $atts         = shortcode_atts(['cart_page' => 'cart'], $atts);
+    $atts       = shortcode_atts(['cart_page' => 'cart'], $atts);
     $api_checkout = GAPSHOP_API . '/api/store/checkout';
-    $return_url   = get_permalink();
-    $cart_page    = get_page_by_path($atts['cart_page']);
-    $cancel_url   = $cart_page ? get_permalink($cart_page) : home_url('/cart');
-
-    // Handle order confirmation return from Stripe
-    if (isset($_GET['order_confirmed'])) {
-        $order_number = sanitize_text_field($_GET['order_confirmed']);
-        ob_start(); ?>
-        <div class="gapshop-wrap">
-            <div style="max-width:560px;margin:40px auto;text-align:center;background:#fff;border-radius:12px;padding:40px;box-shadow:0 2px 12px rgba(0,0,0,0.08)">
-                <div style="width:64px;height:64px;background:#e8f5e9;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:2rem;line-height:64px">✓</div>
-                <h2 style="color:#2e7d32;margin:0 0 8px">Order Confirmed!</h2>
-                <p style="color:#888;margin:0 0 16px">Your order <strong><?php echo esc_html($order_number); ?></strong> has been placed.</p>
-                <p style="color:#888;font-size:.88rem;margin:0 0 24px">A confirmation email has been sent to you.</p>
-                <a href="/" class="gapshop-btn gapshop-btn-primary">Continue Shopping</a>
-            </div>
-        </div>
-        <?php
-        return ob_get_clean();
-    }
+    $cart_page  = get_page_by_path($atts['cart_page']);
+    $cancel_url = $cart_page ? get_permalink($cart_page) : home_url('/cart');
 
     ob_start(); ?>
     <div class="gapshop-wrap" id="gs-checkout-wrap">
@@ -970,21 +952,20 @@ function gapshop_sc_checkout($atts) {
             + (!token ? '<div style="background:#fff3e0;border-left:4px solid #f57c00;padding:12px 16px;border-radius:4px;margin-bottom:20px;font-size:.88rem">💡 <a href="/account/?redirect='+encodeURIComponent(window.location.href)+'" style="color:#e65100;font-weight:600">Sign in</a> to save your order history.</div>' : '')
             + '<h3 style="margin:0 0 16px;font-size:1rem;font-weight:700">Contact Information</h3>'
             + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'
-            + '<input id="gs-fn" class="gapshop-field" type="text" placeholder="First Name *" />'
-            + '<input id="gs-ln" class="gapshop-field" type="text" placeholder="Last Name *" />'
+            + '<input id="gs-fn" class="gapshop-field" type="text" placeholder="First Name" />'
+            + '<input id="gs-ln" class="gapshop-field" type="text" placeholder="Last Name" />'
             + '</div>'
-            + '<input id="gs-em" class="gapshop-field" type="email" placeholder="Email Address *" />'
+            + '<input id="gs-em" class="gapshop-field" type="email" placeholder="Email Address (optional — for order confirmation)" />'
             + '<input id="gs-ph" class="gapshop-field" type="tel" placeholder="Phone" />'
             + '<h3 style="margin:16px 0;font-size:1rem;font-weight:700">Shipping Address</h3>'
-            + '<input id="gs-a1" class="gapshop-field" type="text" placeholder="Address Line 1 *" />'
+            + '<input id="gs-a1" class="gapshop-field" type="text" placeholder="Address Line 1" />'
             + '<input id="gs-a2" class="gapshop-field" type="text" placeholder="Address Line 2" />'
             + '<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;margin-bottom:12px">'
-            + '<input id="gs-ci" style="padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-size:.9rem;box-sizing:border-box" type="text" placeholder="City *" />'
+            + '<input id="gs-ci" style="padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-size:.9rem;box-sizing:border-box" type="text" placeholder="City" />'
             + '<input id="gs-st" style="padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-size:.9rem;box-sizing:border-box" type="text" placeholder="State" maxlength="2" />'
-            + '<input id="gs-zp" style="padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-size:.9rem;box-sizing:border-box" type="text" placeholder="ZIP *" />'
+            + '<input id="gs-zp" style="padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-size:.9rem;box-sizing:border-box" type="text" placeholder="ZIP" />'
             + '</div>'
-            + '<p style="font-size:.78rem;color:#888;margin:0 0 16px">You will be redirected to our secure payment page to complete your purchase.</p>'
-            + '<button id="gs-place" class="gapshop-btn gapshop-btn-primary" style="width:100%;padding:14px;font-size:1rem" onclick="gsPlaceOrder()">🔒 Proceed to Payment — $'+sub.toFixed(2)+'</button>'
+            + '<button id="gs-place" class="gapshop-btn gapshop-btn-primary" style="width:100%;padding:14px;font-size:1rem" onclick="gsPlaceOrder()">Place Order — $'+sub.toFixed(2)+'</button>'
             + '<div id="gs-co-err" class="gapshop-msg-error" style="display:none;margin-top:12px"></div>'
             + '</div>'
             + '<div class="gapshop-summary">'
@@ -993,19 +974,15 @@ function gapshop_sc_checkout($atts) {
                 return '<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:.85rem;border-bottom:1px solid #f5f5f5"><span>'+i.name+' × '+i.quantity+'</span><span style="font-weight:600">$'+(i.unitPrice*i.quantity).toFixed(2)+'</span></div>';
               }).join('')
             + '<div style="display:flex;justify-content:space-between;padding:12px 0 0;font-size:1rem;font-weight:700;border-top:2px solid #eee;margin-top:8px"><span>Total</span><span style="color:#1565c0">$'+sub.toFixed(2)+'</span></div>'
-            + '<p style="font-size:.75rem;color:#aaa;margin-top:12px;text-align:center">Secure payment powered by Stripe</p>'
             + '</div></div>';
     });
 
     async function gsPlaceOrder() {
         var btn = document.getElementById('gs-place');
         var err = document.getElementById('gs-co-err');
-        btn.disabled = true; btn.textContent = 'Processing...'; err.style.display = 'none';
-
-        var email = document.getElementById('gs-em').value.trim();
-        var zip   = document.getElementById('gs-zp').value.trim();
-        if (!email) { showErr('Email is required.'); return; }
-        if (!zip)   { showErr('ZIP code is required.'); return; }
+        btn.disabled = true;
+        btn.textContent = 'Placing Order...';
+        err.style.display = 'none';
 
         var cart  = window.gapShopCart.get();
         var token = localStorage.getItem('gapshop_token');
@@ -1013,33 +990,53 @@ function gapshop_sc_checkout($atts) {
         var payload = {
             firstName: document.getElementById('gs-fn').value.trim(),
             lastName:  document.getElementById('gs-ln').value.trim(),
-            email:     email,
+            email:     document.getElementById('gs-em').value.trim(),
             phone:     document.getElementById('gs-ph').value.trim(),
             shippingAddress: {
-                line1:  document.getElementById('gs-a1').value.trim(),
-                line2:  document.getElementById('gs-a2').value.trim(),
-                city:   document.getElementById('gs-ci').value.trim(),
-                state:  document.getElementById('gs-st').value.trim(),
-                zip:    zip
+                line1: document.getElementById('gs-a1').value.trim(),
+                line2: document.getElementById('gs-a2').value.trim(),
+                city:  document.getElementById('gs-ci').value.trim(),
+                state: document.getElementById('gs-st').value.trim(),
+                zip:   document.getElementById('gs-zp').value.trim()
             },
             items: cart.items.map(function(i) {
-                return { productId: i.productId, variantId: i.variantId || null, name: i.name, quantity: i.quantity, unitPrice: i.unitPrice };
-            }),
-            returnUrl: <?php echo json_encode($return_url); ?>,
-            cancelUrl: <?php echo json_encode($cancel_url); ?>
+                return {
+                    productId: i.productId,
+                    variantId: i.variantId || null,
+                    name:      i.name,
+                    quantity:  i.quantity,
+                    unitPrice: i.unitPrice
+                };
+            })
         };
 
-        var hdrs = { 'Content-Type': 'application/json', 'X-Tenant-Domain': window.location.hostname };
+        var hdrs = {
+            'Content-Type':   'application/json',
+            'X-Tenant-Domain': window.location.hostname
+        };
         if (token) hdrs['Authorization'] = 'Bearer ' + token;
 
         try {
-            var res  = await fetch(<?php echo json_encode($api_checkout); ?>, { method: 'POST', headers: hdrs, body: JSON.stringify(payload) });
+            var res  = await fetch(<?php echo json_encode($api_checkout); ?>, {
+                method:  'POST',
+                headers: hdrs,
+                body:    JSON.stringify(payload)
+            });
             var data = await res.json();
-            if (res.ok && data.checkoutUrl) {
+
+            if (res.ok && data.success) {
                 window.gapShopCart.clear();
-                window.location.href = data.checkoutUrl;
+                // Show inline confirmation
+                document.getElementById('gs-checkout-wrap').innerHTML =
+                    '<div style="max-width:560px;margin:40px auto;text-align:center;background:#fff;border-radius:12px;padding:40px;box-shadow:0 2px 12px rgba(0,0,0,0.08)">'
+                    + '<div style="width:64px;height:64px;background:#e8f5e9;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:2rem;line-height:64px">✓</div>'
+                    + '<h2 style="color:#2e7d32;margin:0 0 8px">Order Confirmed!</h2>'
+                    + '<p style="color:#888;margin:0 0 8px">Your order <strong>' + data.orderNumber + '</strong> has been placed.</p>'
+                    + (payload.email ? '<p style="color:#888;font-size:.88rem;margin:0 0 24px">A confirmation email has been sent to ' + payload.email + '.</p>' : '<p style="color:#888;font-size:.88rem;margin:0 0 24px">Keep your order number for reference.</p>')
+                    + '<a href="/" class="gapshop-btn gapshop-btn-primary">Continue Shopping</a>'
+                    + '</div>';
             } else {
-                showErr(data.error || 'Checkout failed. Please try again.');
+                showErr(data.error || 'Order failed. Please try again.');
             }
         } catch (e) {
             showErr('Network error. Please try again.');
@@ -1050,7 +1047,7 @@ function gapshop_sc_checkout($atts) {
         var btn = document.getElementById('gs-place');
         var err = document.getElementById('gs-co-err');
         btn.disabled    = false;
-        btn.textContent = '🔒 Proceed to Payment';
+        btn.textContent = 'Place Order';
         err.textContent = msg;
         err.style.display = 'block';
     }
