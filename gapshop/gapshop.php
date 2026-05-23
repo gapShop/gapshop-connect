@@ -3,7 +3,7 @@
  * Plugin Name: gapShop
  * Plugin URI:  https://wp.gapshop.net
  * Description: Connects your WordPress site to the gapShop eCommerce platform.
- * Version:     1.0.30
+ * Version:     1.0.31
  * Author:      gapShop
  * License:     GPL2
  */
@@ -14,7 +14,7 @@ define('GAPSHOP_API',        'https://api.gapshop.net');
 define('GAPSHOP_ONBOARDING', 'https://onboarding.gapshop.net');
 define('GAPSHOP_PORTAL',     'https://gapshop.net');
 require_once plugin_dir_path(__FILE__) . 'gapshop-otp.php';
-define('GAPSHOP_VERSION',    '1.0.30');
+define('GAPSHOP_VERSION',    '1.0.31');
 
 add_filter('pre_set_site_transient_update_plugins', function($transient) {
     if (empty($transient->checked)) return $transient;
@@ -1171,3 +1171,78 @@ function gapshop_sync_post_on_save($post_id, $post) {
         'blocking' => false,
     ]);
 }
+
+// ─── Receive tracking from gapShop ───────────────────────────────
+add_action('rest_api_init', function () {
+    register_rest_route('gapshop/v1', '/orders/tracking', [
+        'methods'             => 'POST',
+        'callback'            => 'gapshop_receive_tracking',
+        'permission_callback' => 'gapshop_verify_secret',
+    ]);
+});
+
+function gapshop_receive_tracking(WP_REST_Request $request) {
+    $wp_id          = intval($request['wp_id']);
+    $tracking_number = sanitize_text_field($request['tracking_number']);
+    $tracking_url   = esc_url_raw($request['tracking_url'] ?? '');
+    $carrier        = sanitize_text_field($request['carrier']);
+    $status         = sanitize_text_field($request['status']);
+
+    if (!$wp_id) return new WP_Error('invalid', 'Missing wp_id', ['status' => 400]);
+
+    // Map gapShop status to WC status
+    $wc_status_map = [
+        'shipped'   => 'wc-shipped',
+        'delivered' => 'wc-delivered',
+        'cancelled' => 'wc-cancelled',
+        'refunded'  => 'wc-refunded',
+    ];
+    $wc_status = $wc_status_map[$status] ?? null;
+
+    $order = wc_get_order($wp_id);
+    if (!$order) return new WP_Error('not_found', 'Order not found', ['status' => 404]);
+
+    if ($wc_status) $order->update_status($wc_status);
+
+    if ($tracking_number) {
+        $order->update_meta_data('_tracking_number', $tracking_number);
+        $order->update_meta_data('_tracking_url', $tracking_url);
+        $order->update_meta_data('_carrier', $carrier);
+    }
+
+    $order->save();
+
+    return rest_ensure_response(['success' => true]);
+}
+
+// ─── Blog webhook to gapShop ──────────────────────────────────────
+define('GAPSHOP_BLOG_WEBHOOK_URL', 'https://api.gapshop.net/api/webhook/blog/sync');
+// define('GAPSHOP_BLOG_WEBHOOK_SECRET', get_option('gapshop_secret_key'));
+define('GAPSHOP_BLOG_WEBHOOK_SECRET', '0b919b11bed5ab94057c44eafe203b3bc519789f67e4f66a3d24ac54ed1f027a');
+
+function gapshop_blog_webhook(string $event, int $wpId): void {
+    wp_remote_post(GAPSHOP_BLOG_WEBHOOK_URL, [
+        'headers' => [
+            'Content-Type'  => 'application/json',
+            'X-GapShop-Key' => GAPSHOP_BLOG_WEBHOOK_SECRET,
+        ],
+        'body'    => json_encode(['event' => $event, 'wp_id' => $wpId]),
+        'timeout' => 10,
+    ]);
+}
+
+add_action('save_post', function (int $postId, WP_Post $post) {
+    if ($post->post_type !== 'post' || wp_is_post_revision($postId)) return;
+    $event = $post->post_status === 'publish' ? 'publish' : 'update';
+    gapshop_blog_webhook($event, $postId);
+}, 10, 2);
+
+add_action('trashed_post', function (int $postId) {
+    if (get_post_type($postId) !== 'post') return;
+    gapshop_blog_webhook('trash', $postId);
+});
+
+add_action('before_delete_post', function (int $postId) {
+    if (get_post_type($postId) !== 'post') return;
+    gapshop_blog_webhook('delete', $postId);
+});
