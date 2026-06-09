@@ -3,7 +3,7 @@
  * Plugin Name: gapShop
  * Plugin URI:  https://wp.gapshop.net
  * Description: Connects your WordPress site to the gapShop eCommerce platform.
- * Version:     1.0.31
+ * Version:     1.0.32
  * Author:      gapShop
  * License:     GPL2
  */
@@ -550,17 +550,24 @@ function gapshop_cart_js() {
         },
         count: function() { return this.get().items.reduce(function(s,i){ return s+i.quantity; }, 0); },
         subtotal: function() { return this.get().items.reduce(function(s,i){ return s+(i.unitPrice*i.quantity); }, 0); },
-        add: function(product, qty, variantId, variantLabel, price) {
+        add: function(product, qty, variantId, variantLabel, price, selectedOptions) {
             var c = this.get();
-            var key = product.id + (variantId ? '-'+variantId : '');
-            var ex = c.items.find(function(i){ return i.key===key; });
+            selectedOptions = selectedOptions || [];
+            var optKey = selectedOptions.map(function(o){ return o.productOptionValueId + ':' + o.value; }).join('|');
+            var key = product.id + (variantId ? '-' + variantId : '') + (optKey ? '-' + optKey : '');
+            var ex = c.items.find(function(i){ return i.key === key; });
             if (ex) { ex.quantity += qty; }
             else {
                 c.items.push({
-                    key: key, productId: product.id, variantId: variantId||null,
-                    name: product.name + (variantLabel ? ' – '+variantLabel : ''),
-                    imageUrl: product.imageUrl, slug: product.slug,
-                    unitPrice: price, quantity: qty
+                    key: key,
+                    productId: product.id,
+                    variantId: variantId || null,
+                    name: product.name + (variantLabel ? ' – ' + variantLabel : ''),
+                    imageUrl: product.imageUrl,
+                    slug: product.slug,
+                    unitPrice: price,
+                    quantity: qty,
+                    selectedOptions: selectedOptions
                 });
             }
             this.save(c);
@@ -798,6 +805,7 @@ function gapshop_sc_product($atts) {
                     </select>
                 </div>
                 <?php endif; ?>
+
                 <div style="display:flex;gap:12px;align-items:center;margin-bottom:20px">
                     <div class="gapshop-qty-wrap">
                         <button type="button" class="gapshop-qty-btn" onclick="gsQty(-1)">−</button>
@@ -839,20 +847,65 @@ function gapshop_sc_product($atts) {
         var i = document.getElementById('gs-qty');
         i.value = Math.max(1, Math.min(parseInt(i.max)||999, parseInt(i.value)+d));
     }
-    function gsAddCart(p, base) {
-        var qty = parseInt(document.getElementById('gs-qty').value);
-        var sel = document.getElementById('gs-variant');
-        var vid = null, vlabel = '', price = base;
-        if (sel && sel.value) {
-            var o = sel.options[sel.selectedIndex];
-            vid = sel.value; vlabel = o.dataset.label||''; price = parseFloat(o.dataset.price)||base;
+function gsCollectOptions() {
+    var options = [];
+    document.querySelectorAll('.gs-option').forEach(function(sel) {
+        var opt = sel.options[sel.selectedIndex];
+        if (opt && opt.value) {
+            options.push({
+                productOptionValueId: parseInt(opt.value),
+                label: sel.dataset.label,
+                value: opt.dataset.description,
+                priceModifier: parseFloat(opt.dataset.price) || 0
+            });
         }
-        window.gapShopCart.add(p, qty, vid, vlabel, price);
-        var t = document.getElementById('gs-atc-toast');
-        t.textContent = p.name + ' added to cart!';
-        t.style.display = 'block';
-        setTimeout(function(){ t.style.display='none'; }, 2500);
+    });
+    document.querySelectorAll('.gs-option-radio:checked').forEach(function(r) {
+        options.push({
+            productOptionValueId: parseInt(r.dataset.valueId),
+            label: r.dataset.label,
+            value: r.dataset.description,
+            priceModifier: parseFloat(r.dataset.price) || 0
+        });
+    });
+    document.querySelectorAll('.gs-option-checkbox:checked').forEach(function(c) {
+        options.push({
+            productOptionValueId: parseInt(c.dataset.valueId),
+            label: c.dataset.label,
+            value: c.dataset.description,
+            priceModifier: parseFloat(c.dataset.price) || 0
+        });
+    });
+    document.querySelectorAll('.gs-option-text').forEach(function(t) {
+        if (t.value.trim()) {
+            options.push({
+                productOptionValueId: null,
+                label: t.dataset.label,
+                value: t.value.trim(),
+                priceModifier: 0
+            });
+        }
+    });
+    return options;
+}
+
+function gsAddCart(p, base) {
+    var qty = parseInt(document.getElementById('gs-qty').value);
+    var sel = document.getElementById('gs-variant');
+    var vid = null, vlabel = '', price = base;
+    if (sel && sel.value) {
+        var o = sel.options[sel.selectedIndex];
+        vid = sel.value; vlabel = o.dataset.label || ''; price = parseFloat(o.dataset.price) || base;
     }
+    var selectedOptions = gsCollectOptions();
+    var optionsPrice = selectedOptions.reduce(function(sum, o) { return sum + o.priceModifier; }, 0);
+    price = price + optionsPrice;
+    window.gapShopCart.add(p, qty, vid, vlabel, price, selectedOptions);
+    var t = document.getElementById('gs-atc-toast');
+    t.textContent = p.name + ' added to cart!';
+    t.style.display = 'block';
+    setTimeout(function(){ t.style.display = 'none'; }, 2500);
+}
     </script>
     <?php
     return ob_get_clean();
