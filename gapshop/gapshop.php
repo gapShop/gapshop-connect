@@ -3,7 +3,7 @@
  * Plugin Name: gapShop
  * Plugin URI:  https://wp.gapshop.net
  * Description: Connects your WordPress site to the gapShop eCommerce platform.
- * Version:     1.0.34
+ * Version:     1.0.35
  * Author:      gapShop
  * License:     GPL2
  */
@@ -14,7 +14,7 @@ define('GAPSHOP_API',        'https://api.gapshop.net');
 define('GAPSHOP_ONBOARDING', 'https://onboarding.gapshop.net');
 define('GAPSHOP_PORTAL',     'https://gapshop.net');
 require_once plugin_dir_path(__FILE__) . 'gapshop-otp.php';
-define('GAPSHOP_VERSION',    '1.0.34');
+define('GAPSHOP_VERSION',    '1.0.35');
 
 add_filter('pre_set_site_transient_update_plugins', function($transient) {
     if (empty($transient->checked)) return $transient;
@@ -1090,7 +1090,9 @@ function gapshop_sc_cart($atts) {
                 return '<tr>'
                     + '<td style="display:flex;align-items:center;gap:12px">'
                     + (i.imageUrl ? '<img src="'+i.imageUrl+'" style="width:60px;height:60px;object-fit:cover;border-radius:4px"/>' : '<div style="width:60px;height:60px;background:#f0f0f0;border-radius:4px"></div>')
-                    + '<div><div style="font-weight:600;font-size:.9rem">'+i.name+'</div><div style="font-size:.78rem;color:#888">$'+i.unitPrice.toFixed(2)+' each</div></div></td>'
+                    + '<div><div style="font-weight:600;font-size:.9rem">'+i.name+'</div>'
+                    + (i.selectedOptions && i.selectedOptions.length ? i.selectedOptions.map(function(o){ return '<div style="font-size:.75rem;color:#888"><strong>'+o.label+':</strong> '+o.value+(o.priceModifier ? ' (+$'+o.priceModifier.toFixed(2)+')' : '')+'</div>'; }).join('') : '')
+                    + '<div style="font-size:.78rem;color:#888">$'+i.unitPrice.toFixed(2)+' each</div></div></td>'
                     + '<td style="text-align:center"><div class="gapshop-qty-wrap" style="display:inline-flex">'
                     + '<button class="gapshop-qty-btn" onclick="gsCartUpd(\''+i.key+'\','+(i.quantity-1)+')">−</button>'
                     + '<span style="padding:0 12px;font-weight:600">'+i.quantity+'</span>'
@@ -1177,7 +1179,10 @@ function gapshop_sc_checkout($atts) {
             + '<div class="gapshop-summary">'
             + '<h3 style="margin:0 0 16px;font-size:1rem;font-weight:700">Order Summary</h3>'
             + cart.items.map(function(i){
-                return '<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:.85rem;border-bottom:1px solid #f5f5f5"><span>'+i.name+' × '+i.quantity+'</span><span style="font-weight:600">$'+(i.unitPrice*i.quantity).toFixed(2)+'</span></div>';
+            return '<div style="padding:6px 0;font-size:.85rem;border-bottom:1px solid #f5f5f5">'
+                + '<div style="display:flex;justify-content:space-between"><span>'+i.name+' × '+i.quantity+'</span><span style="font-weight:600">$'+(i.unitPrice*i.quantity).toFixed(2)+'</span></div>'
+                + (i.selectedOptions && i.selectedOptions.length ? '<div style="margin-top:4px;font-size:.75rem;color:#888">'+i.selectedOptions.map(function(o){ return '<div><strong>'+o.label+':</strong> '+o.value+'</div>'; }).join('')+'</div>' : '')
+                + '</div>';
               }).join('')
             + '<div style="display:flex;justify-content:space-between;padding:12px 0 0;font-size:1rem;font-weight:700;border-top:2px solid #eee;margin-top:8px"><span>Total</span><span style="color:#1565c0">$'+sub.toFixed(2)+'</span></div>'
             + '</div></div>';
@@ -1211,7 +1216,8 @@ function gapshop_sc_checkout($atts) {
                     variantId: i.variantId || null,
                     name:      i.name,
                     quantity:  i.quantity,
-                    unitPrice: i.unitPrice
+                    unitPrice: i.unitPrice,
+                    selectedOptions: i.selectedOptions || []
                 };
             })
         };
