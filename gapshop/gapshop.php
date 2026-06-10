@@ -3,7 +3,7 @@
  * Plugin Name: gapShop
  * Plugin URI:  https://wp.gapshop.net
  * Description: Connects your WordPress site to the gapShop eCommerce platform.
- * Version:     1.0.33
+ * Version:     1.0.34
  * Author:      gapShop
  * License:     GPL2
  */
@@ -14,7 +14,7 @@ define('GAPSHOP_API',        'https://api.gapshop.net');
 define('GAPSHOP_ONBOARDING', 'https://onboarding.gapshop.net');
 define('GAPSHOP_PORTAL',     'https://gapshop.net');
 require_once plugin_dir_path(__FILE__) . 'gapshop-otp.php';
-define('GAPSHOP_VERSION',    '1.0.33');
+define('GAPSHOP_VERSION',    '1.0.34');
 
 add_filter('pre_set_site_transient_update_plugins', function($transient) {
     if (empty($transient->checked)) return $transient;
@@ -757,7 +757,6 @@ function gapshop_sc_category($atts) {
 }
 
 // ─── [gapshop_product] ───────────────────────────────────────────────────────
-
 add_shortcode('gapshop_product', 'gapshop_sc_product');
 function gapshop_sc_product($atts) {
     $atts = shortcode_atts(['slug' => ''], $atts);
@@ -806,6 +805,159 @@ function gapshop_sc_product($atts) {
                 </div>
                 <?php endif; ?>
 
+                <?php if (!empty($p['options'])): ?>
+                <div id="gs-options" style="margin-bottom:16px;display:flex;flex-direction:column;gap:12px">
+                    <?php foreach ($p['options'] as $opt):
+                        $type = $opt['type'] ?? 'DropDown';
+                        $label = esc_html($opt['label']);
+                        $required = !empty($opt['isRequired']);
+                    ?>
+                        <?php if ($type === 'Title'): ?>
+                            <div style="font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#888;border-top:1px solid #f0f0f0;padding-top:4px"><?php echo $label; ?></div>
+
+                        <?php elseif ($type === 'DropDown'): ?>
+                            <div>
+                                <label style="font-size:.85rem;font-weight:600;display:block;margin-bottom:4px">
+                                    <?php echo $label; ?><?php if ($required): ?> <span style="color:#e53935">*</span><?php endif; ?>
+                                </label>
+                                <select class="gs-option" data-option-id="<?php echo esc_attr($opt['id']); ?>" data-label="<?php echo esc_attr($opt['label']); ?>"
+                                        style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:.88rem;max-width:280px;width:100%">
+                                    <option value="">— Select —</option>
+                                    <?php foreach ($opt['values'] as $v): ?>
+                                    <option value="<?php echo esc_attr($v['id']); ?>"
+                                            data-price="<?php echo esc_attr($v['priceModifier']); ?>"
+                                            data-description="<?php echo esc_attr($v['description']); ?>"
+                                            <?php echo !empty($v['isDefault']) ? 'selected' : ''; ?>>
+                                        <?php echo esc_html($v['description']); ?>
+                                        <?php if ($v['priceModifier'] != 0): ?>(+$<?php echo number_format($v['priceModifier'], 2); ?>)<?php endif; ?>
+                                    </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+
+                        <?php elseif ($type === 'Radio'): ?>
+                            <div>
+                                <label style="font-size:.85rem;font-weight:600;display:block;margin-bottom:6px">
+                                    <?php echo $label; ?><?php if ($required): ?> <span style="color:#e53935">*</span><?php endif; ?>
+                                </label>
+                                <div style="display:flex;flex-wrap:wrap;gap:6px">
+                                    <?php foreach ($opt['values'] as $v): ?>
+                                    <label style="cursor:pointer">
+                                        <input type="radio" name="gs_opt_<?php echo esc_attr($opt['id']); ?>"
+                                               class="gs-option-radio"
+                                               data-option-id="<?php echo esc_attr($opt['id']); ?>"
+                                               data-label="<?php echo esc_attr($opt['label']); ?>"
+                                               data-value-id="<?php echo esc_attr($v['id']); ?>"
+                                               data-price="<?php echo esc_attr($v['priceModifier']); ?>"
+                                               data-description="<?php echo esc_attr($v['description']); ?>"
+                                               <?php echo !empty($v['isDefault']) ? 'checked' : ''; ?>
+                                               style="display:none" />
+                                        <span class="gs-radio-btn" style="display:inline-block;padding:6px 12px;border:1px solid #ddd;border-radius:6px;font-size:.85rem">
+                                            <?php echo esc_html($v['description']); ?>
+                                            <?php if ($v['priceModifier'] != 0): ?>(+$<?php echo number_format($v['priceModifier'], 2); ?>)<?php endif; ?>
+                                        </span>
+                                    </label>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+
+                        <?php elseif ($type === 'Checkbox'): ?>
+                            <div>
+                                <label style="font-size:.85rem;font-weight:600;display:block;margin-bottom:6px">
+                                    <?php echo $label; ?><?php if ($required): ?> <span style="color:#e53935">*</span><?php endif; ?>
+                                </label>
+                                <div style="display:flex;flex-direction:column;gap:4px">
+                                    <?php foreach ($opt['values'] as $v): ?>
+                                    <label style="display:flex;align-items:center;gap:8px;font-size:.88rem;cursor:pointer">
+                                        <input type="checkbox" class="gs-option-checkbox"
+                                               data-option-id="<?php echo esc_attr($opt['id']); ?>"
+                                               data-label="<?php echo esc_attr($opt['label']); ?>"
+                                               data-value-id="<?php echo esc_attr($v['id']); ?>"
+                                               data-price="<?php echo esc_attr($v['priceModifier']); ?>"
+                                               data-description="<?php echo esc_attr($v['description']); ?>"
+                                               <?php echo !empty($v['isDefault']) ? 'checked' : ''; ?> />
+                                        <?php echo esc_html($v['description']); ?>
+                                        <?php if ($v['priceModifier'] != 0): ?>(+$<?php echo number_format($v['priceModifier'], 2); ?>)<?php endif; ?>
+                                    </label>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+
+                        <?php elseif ($type === 'Text'): ?>
+                            <div>
+                                <label style="font-size:.85rem;font-weight:600;display:block;margin-bottom:4px">
+                                    <?php echo $label; ?><?php if ($required): ?> <span style="color:#e53935">*</span><?php endif; ?>
+                                </label>
+                                <input type="text" class="gs-option-text"
+                                       data-option-id="<?php echo esc_attr($opt['id']); ?>"
+                                       data-label="<?php echo esc_attr($opt['label']); ?>"
+                                       <?php if (!empty($opt['characterLimit'])): ?>maxlength="<?php echo intval($opt['characterLimit']); ?>"<?php endif; ?>
+                                       placeholder="<?php echo esc_attr($opt['label']); ?>"
+                                       style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:.88rem;width:100%;max-width:320px" />
+                            </div>
+
+                        <?php elseif ($type === 'TextArea'): ?>
+                            <div>
+                                <label style="font-size:.85rem;font-weight:600;display:block;margin-bottom:4px">
+                                    <?php echo $label; ?><?php if ($required): ?> <span style="color:#e53935">*</span><?php endif; ?>
+                                </label>
+                                <textarea class="gs-option-text"
+                                          data-option-id="<?php echo esc_attr($opt['id']); ?>"
+                                          data-label="<?php echo esc_attr($opt['label']); ?>"
+                                          <?php if (!empty($opt['characterLimit'])): ?>maxlength="<?php echo intval($opt['characterLimit']); ?>"<?php endif; ?>
+                                          placeholder="<?php echo esc_attr($opt['label']); ?>"
+                                          style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:.88rem;width:100%;max-width:320px"
+                                          rows="3"></textarea>
+                            </div>
+
+                        <?php elseif ($type === 'OneTimeFee'): ?>
+                            <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f9f9f9;border-radius:6px;border:1px solid #eee">
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.88rem;flex:1">
+                                    <input type="checkbox" class="gs-option-checkbox"
+                                           data-option-id="<?php echo esc_attr($opt['id']); ?>"
+                                           data-label="<?php echo esc_attr($opt['label']); ?>"
+                                           data-value-id="<?php echo esc_attr($opt['values'][0]['id'] ?? 0); ?>"
+                                           data-price="<?php echo esc_attr($opt['values'][0]['priceModifier'] ?? 0); ?>"
+                                           data-description="<?php echo esc_attr($opt['label']); ?>" />
+                                    <?php echo $label; ?>
+                                </label>
+                                <?php if (!empty($opt['values'][0]['priceModifier'])): ?>
+                                <span style="font-weight:700;color:#1565c0">+$<?php echo number_format($opt['values'][0]['priceModifier'], 2); ?></span>
+                                <?php endif; ?>
+                            </div>
+
+                        <?php elseif ($type === 'ColorSwatch'): ?>
+                            <div>
+                                <label style="font-size:.85rem;font-weight:600;display:block;margin-bottom:6px">
+                                    <?php echo $label; ?><?php if ($required): ?> <span style="color:#e53935">*</span><?php endif; ?>
+                                </label>
+                                <div style="display:flex;flex-wrap:wrap;gap:8px">
+                                    <?php foreach ($opt['values'] as $v): ?>
+                                    <label title="<?php echo esc_attr($v['description']); ?>" style="cursor:pointer">
+                                        <input type="radio" name="gs_opt_<?php echo esc_attr($opt['id']); ?>"
+                                               class="gs-option-radio"
+                                               data-option-id="<?php echo esc_attr($opt['id']); ?>"
+                                               data-label="<?php echo esc_attr($opt['label']); ?>"
+                                               data-value-id="<?php echo esc_attr($v['id']); ?>"
+                                               data-price="<?php echo esc_attr($v['priceModifier']); ?>"
+                                               data-description="<?php echo esc_attr($v['description']); ?>"
+                                               <?php echo !empty($v['isDefault']) ? 'checked' : ''; ?>
+                                               style="display:none" />
+                                        <?php if (!empty($v['imageUrl'])): ?>
+                                        <img src="<?php echo esc_url($v['imageUrl']); ?>" alt="<?php echo esc_attr($v['description']); ?>"
+                                             style="width:30px;height:30px;border-radius:50%;border:2px solid #ddd;object-fit:cover" />
+                                        <?php else: ?>
+                                        <span style="display:inline-block;width:30px;height:30px;border-radius:50%;background:<?php echo esc_attr(strtolower($v['description'])); ?>;border:2px solid #ddd"></span>
+                                        <?php endif; ?>
+                                    </label>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+
                 <div style="display:flex;gap:12px;align-items:center;margin-bottom:20px">
                     <div class="gapshop-qty-wrap">
                         <button type="button" class="gapshop-qty-btn" onclick="gsQty(-1)">−</button>
@@ -847,218 +999,66 @@ function gapshop_sc_product($atts) {
         var i = document.getElementById('gs-qty');
         i.value = Math.max(1, Math.min(parseInt(i.max)||999, parseInt(i.value)+d));
     }
-function gsCollectOptions() {
-    var options = [];
-    document.querySelectorAll('.gs-option').forEach(function(sel) {
-        var opt = sel.options[sel.selectedIndex];
-        if (opt && opt.value) {
-            options.push({
-                productOptionValueId: parseInt(opt.value),
-                label: sel.dataset.label,
-                value: opt.dataset.description,
-                priceModifier: parseFloat(opt.dataset.price) || 0
-            });
-        }
-    });
-    document.querySelectorAll('.gs-option-radio:checked').forEach(function(r) {
-        options.push({
-            productOptionValueId: parseInt(r.dataset.valueId),
-            label: r.dataset.label,
-            value: r.dataset.description,
-            priceModifier: parseFloat(r.dataset.price) || 0
+
+    function gsCollectOptions() {
+        var options = [];
+        document.querySelectorAll('.gs-option').forEach(function(sel) {
+            var opt = sel.options[sel.selectedIndex];
+            if (opt && opt.value) {
+                options.push({
+                    productOptionValueId: parseInt(opt.value),
+                    label: sel.dataset.label,
+                    value: opt.dataset.description,
+                    priceModifier: parseFloat(opt.dataset.price) || 0
+                });
+            }
         });
-    });
-    document.querySelectorAll('.gs-option-checkbox:checked').forEach(function(c) {
-        options.push({
-            productOptionValueId: parseInt(c.dataset.valueId),
-            label: c.dataset.label,
-            value: c.dataset.description,
-            priceModifier: parseFloat(c.dataset.price) || 0
-        });
-    });
-    document.querySelectorAll('.gs-option-text').forEach(function(t) {
-        if (t.value.trim()) {
+        document.querySelectorAll('.gs-option-radio:checked').forEach(function(r) {
             options.push({
-                productOptionValueId: null,
-                label: t.dataset.label,
-                value: t.value.trim(),
-                priceModifier: 0
+                productOptionValueId: parseInt(r.dataset.valueId),
+                label: r.dataset.label,
+                value: r.dataset.description,
+                priceModifier: parseFloat(r.dataset.price) || 0
             });
-        }
-    });
-    return options;
-}
-
-<?php if (!empty($p['options'])): ?>
-<div id="gs-options" style="margin-bottom:16px;display:flex;flex-direction:column;gap:12px">
-    <?php foreach ($p['options'] as $opt):
-        $type = $opt['type'] ?? 'DropDown';
-        $label = esc_html($opt['label']);
-        $required = !empty($opt['isRequired']);
-    ?>
-    <?php if ($type === 'Title'): ?>
-        <div style="font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#888;border-top:1px solid #f0f0f0;padding-top:4px"><?php echo $label; ?></div>
-
-    <?php elseif ($type === 'DropDown'): ?>
-        <div>
-            <label style="font-size:.85rem;font-weight:600;display:block;margin-bottom:4px">
-                <?php echo $label; ?><?php if ($required): ?> <span style="color:#e53935">*</span><?php endif; ?>
-            </label>
-            <select class="gs-option" data-option-id="<?php echo esc_attr($opt['id']); ?>" data-label="<?php echo esc_attr($opt['label']); ?>"
-                    style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:.88rem;max-width:280px;width:100%">
-                <option value="">— Select —</option>
-                <?php foreach ($opt['values'] as $v): ?>
-                <option value="<?php echo esc_attr($v['id']); ?>"
-                        data-price="<?php echo esc_attr($v['priceModifier']); ?>"
-                        data-description="<?php echo esc_attr($v['description']); ?>"
-                        <?php echo !empty($v['isDefault']) ? 'selected' : ''; ?>>
-                    <?php echo esc_html($v['description']); ?>
-                    <?php if ($v['priceModifier'] != 0): ?>(+$<?php echo number_format($v['priceModifier'], 2); ?>)<?php endif; ?>
-                </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-
-    <?php elseif ($type === 'Radio'): ?>
-        <div>
-            <label style="font-size:.85rem;font-weight:600;display:block;margin-bottom:6px">
-                <?php echo $label; ?><?php if ($required): ?> <span style="color:#e53935">*</span><?php endif; ?>
-            </label>
-            <div style="display:flex;flex-wrap:wrap;gap:6px">
-                <?php foreach ($opt['values'] as $v): ?>
-                <label style="cursor:pointer">
-                    <input type="radio" name="gs_opt_<?php echo esc_attr($opt['id']); ?>"
-                           class="gs-option-radio"
-                           data-option-id="<?php echo esc_attr($opt['id']); ?>"
-                           data-label="<?php echo esc_attr($opt['label']); ?>"
-                           data-value-id="<?php echo esc_attr($v['id']); ?>"
-                           data-price="<?php echo esc_attr($v['priceModifier']); ?>"
-                           data-description="<?php echo esc_attr($v['description']); ?>"
-                           <?php echo !empty($v['isDefault']) ? 'checked' : ''; ?>
-                           style="display:none" />
-                    <span class="gs-radio-btn" style="display:inline-block;padding:6px 12px;border:1px solid #ddd;border-radius:6px;font-size:.85rem">
-                        <?php echo esc_html($v['description']); ?>
-                        <?php if ($v['priceModifier'] != 0): ?>(+$<?php echo number_format($v['priceModifier'], 2); ?>)<?php endif; ?>
-                    </span>
-                </label>
-                <?php endforeach; ?>
-            </div>
-        </div>
-
-    <?php elseif ($type === 'Checkbox'): ?>
-        <div>
-            <label style="font-size:.85rem;font-weight:600;display:block;margin-bottom:6px">
-                <?php echo $label; ?><?php if ($required): ?> <span style="color:#e53935">*</span><?php endif; ?>
-            </label>
-            <div style="display:flex;flex-direction:column;gap:4px">
-                <?php foreach ($opt['values'] as $v): ?>
-                <label style="display:flex;align-items:center;gap:8px;font-size:.88rem;cursor:pointer">
-                    <input type="checkbox" class="gs-option-checkbox"
-                           data-option-id="<?php echo esc_attr($opt['id']); ?>"
-                           data-label="<?php echo esc_attr($opt['label']); ?>"
-                           data-value-id="<?php echo esc_attr($v['id']); ?>"
-                           data-price="<?php echo esc_attr($v['priceModifier']); ?>"
-                           data-description="<?php echo esc_attr($v['description']); ?>"
-                           <?php echo !empty($v['isDefault']) ? 'checked' : ''; ?> />
-                    <?php echo esc_html($v['description']); ?>
-                    <?php if ($v['priceModifier'] != 0): ?>(+$<?php echo number_format($v['priceModifier'], 2); ?>)<?php endif; ?>
-                </label>
-                <?php endforeach; ?>
-            </div>
-        </div>
-
-    <?php elseif ($type === 'Text'): ?>
-        <div>
-            <label style="font-size:.85rem;font-weight:600;display:block;margin-bottom:4px">
-                <?php echo $label; ?><?php if ($required): ?> <span style="color:#e53935">*</span><?php endif; ?>
-            </label>
-            <input type="text" class="gs-option-text"
-                   data-option-id="<?php echo esc_attr($opt['id']); ?>"
-                   data-label="<?php echo esc_attr($opt['label']); ?>"
-                   <?php if (!empty($opt['characterLimit'])): ?>maxlength="<?php echo intval($opt['characterLimit']); ?>"<?php endif; ?>
-                   placeholder="<?php echo esc_attr($opt['label']); ?>"
-                   style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:.88rem;width:100%;max-width:320px" />
-        </div>
-
-    <?php elseif ($type === 'TextArea'): ?>
-        <div>
-            <label style="font-size:.85rem;font-weight:600;display:block;margin-bottom:4px">
-                <?php echo $label; ?><?php if ($required): ?> <span style="color:#e53935">*</span><?php endif; ?>
-            </label>
-            <textarea class="gs-option-text"
-                      data-option-id="<?php echo esc_attr($opt['id']); ?>"
-                      data-label="<?php echo esc_attr($opt['label']); ?>"
-                      <?php if (!empty($opt['characterLimit'])): ?>maxlength="<?php echo intval($opt['characterLimit']); ?>"<?php endif; ?>
-                      placeholder="<?php echo esc_attr($opt['label']); ?>"
-                      style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:.88rem;width:100%;max-width:320px"
-                      rows="3"></textarea>
-        </div>
-
-    <?php elseif ($type === 'OneTimeFee'): ?>
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f9f9f9;border-radius:6px;border:1px solid #eee">
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.88rem;flex:1">
-                <input type="checkbox" class="gs-option-checkbox"
-                       data-option-id="<?php echo esc_attr($opt['id']); ?>"
-                       data-label="<?php echo esc_attr($opt['label']); ?>"
-                       data-value-id="<?php echo esc_attr($opt['values'][0]['id'] ?? 0); ?>"
-                       data-price="<?php echo esc_attr($opt['values'][0]['priceModifier'] ?? 0); ?>"
-                       data-description="<?php echo esc_attr($opt['label']); ?>" />
-                <?php echo $label; ?>
-            </label>
-            <?php if (!empty($opt['values'][0]['priceModifier'])): ?>
-            <span style="font-weight:700;color:#1565c0">+$<?php echo number_format($opt['values'][0]['priceModifier'], 2); ?></span>
-            <?php endif; ?>
-        </div>
-
-    <?php elseif ($type === 'ColorSwatch'): ?>
-        <div>
-            <label style="font-size:.85rem;font-weight:600;display:block;margin-bottom:6px">
-                <?php echo $label; ?><?php if ($required): ?> <span style="color:#e53935">*</span><?php endif; ?>
-            </label>
-            <div style="display:flex;flex-wrap:wrap;gap:8px">
-                <?php foreach ($opt['values'] as $v): ?>
-                <label title="<?php echo esc_attr($v['description']); ?>" style="cursor:pointer">
-                    <input type="radio" name="gs_opt_<?php echo esc_attr($opt['id']); ?>"
-                           class="gs-option-radio"
-                           data-option-id="<?php echo esc_attr($opt['id']); ?>"
-                           data-label="<?php echo esc_attr($opt['label']); ?>"
-                           data-value-id="<?php echo esc_attr($v['id']); ?>"
-                           data-price="<?php echo esc_attr($v['priceModifier']); ?>"
-                           data-description="<?php echo esc_attr($v['description']); ?>"
-                           <?php echo !empty($v['isDefault']) ? 'checked' : ''; ?>
-                           style="display:none" />
-                    <?php if (!empty($v['imageUrl'])): ?>
-                    <img src="<?php echo esc_url($v['imageUrl']); ?>" alt="<?php echo esc_attr($v['description']); ?>"
-                         style="width:30px;height:30px;border-radius:50%;border:2px solid #ddd;object-fit:cover" />
-                    <?php else: ?>
-                    <span style="display:inline-block;width:30px;height:30px;border-radius:50%;background:<?php echo esc_attr(strtolower($v['description'])); ?>;border:2px solid #ddd"></span>
-                    <?php endif; ?>
-                </label>
-                <?php endforeach; ?>
-            </div>
-        </div>
-    <?php endif; ?>
-    <?php endforeach; ?>
-</div>
-<?php endif; ?>
-
-function gsAddCart(p, base) {
-    var qty = parseInt(document.getElementById('gs-qty').value);
-    var sel = document.getElementById('gs-variant');
-    var vid = null, vlabel = '', price = base;
-    if (sel && sel.value) {
-        var o = sel.options[sel.selectedIndex];
-        vid = sel.value; vlabel = o.dataset.label || ''; price = parseFloat(o.dataset.price) || base;
+        });
+        document.querySelectorAll('.gs-option-checkbox:checked').forEach(function(c) {
+            options.push({
+                productOptionValueId: parseInt(c.dataset.valueId),
+                label: c.dataset.label,
+                value: c.dataset.description,
+                priceModifier: parseFloat(c.dataset.price) || 0
+            });
+        });
+        document.querySelectorAll('.gs-option-text').forEach(function(t) {
+            if (t.value.trim()) {
+                options.push({
+                    productOptionValueId: null,
+                    label: t.dataset.label,
+                    value: t.value.trim(),
+                    priceModifier: 0
+                });
+            }
+        });
+        return options;
     }
-    var selectedOptions = gsCollectOptions();
-    var optionsPrice = selectedOptions.reduce(function(sum, o) { return sum + o.priceModifier; }, 0);
-    price = price + optionsPrice;
-    window.gapShopCart.add(p, qty, vid, vlabel, price, selectedOptions);
-    var t = document.getElementById('gs-atc-toast');
-    t.textContent = p.name + ' added to cart!';
-    t.style.display = 'block';
-    setTimeout(function(){ t.style.display = 'none'; }, 2500);
-}
+
+    function gsAddCart(p, base) {
+        var qty = parseInt(document.getElementById('gs-qty').value);
+        var sel = document.getElementById('gs-variant');
+        var vid = null, vlabel = '', price = base;
+        if (sel && sel.value) {
+            var o = sel.options[sel.selectedIndex];
+            vid = sel.value; vlabel = o.dataset.label || ''; price = parseFloat(o.dataset.price) || base;
+        }
+        var selectedOptions = gsCollectOptions();
+        var optionsPrice = selectedOptions.reduce(function(sum, o) { return sum + o.priceModifier; }, 0);
+        price = price + optionsPrice;
+        window.gapShopCart.add(p, qty, vid, vlabel, price, selectedOptions);
+        var t = document.getElementById('gs-atc-toast');
+        t.textContent = p.name + ' added to cart!';
+        t.style.display = 'block';
+        setTimeout(function(){ t.style.display = 'none'; }, 2500);
+    }
     </script>
     <?php
     return ob_get_clean();
