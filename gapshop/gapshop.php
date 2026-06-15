@@ -1161,6 +1161,53 @@ function gapshop_sc_checkout($atts) {
     var gsTotals = { subtotal: 0, discountAmount: 0, freeShipping: false, shipping: 0, tax: 0, deliveryFee: 0, deliveryFeeLabel: null, total: 0 };
     var gsTotalsTimeout;
 
+    // ─── Checkout info persistence (localStorage) ─────────────────────────
+    var GS_CHECKOUT_STORAGE_KEY = 'gapshop_checkout_info';
+    var gsCheckoutFieldIds = ['gs-fn', 'gs-ln', 'gs-em', 'gs-ph', 'gs-a1', 'gs-a2', 'gs-ci', 'gs-st', 'gs-zp'];
+    var gsSaveTimeout;
+
+    function gsSaveCheckoutInfo() {
+        var data = {};
+        gsCheckoutFieldIds.forEach(function(id) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            data[id] = el.value;
+        });
+        try {
+            localStorage.setItem(GS_CHECKOUT_STORAGE_KEY, JSON.stringify(data));
+        } catch (e) {}
+    }
+
+    function gsLoadCheckoutInfo() {
+        try {
+            var raw = localStorage.getItem(GS_CHECKOUT_STORAGE_KEY);
+            if (!raw) return;
+            var data = JSON.parse(raw);
+            gsCheckoutFieldIds.forEach(function(id) {
+                var el = document.getElementById(id);
+                if (!el || !(id in data)) return;
+                el.value = data[id];
+            });
+        } catch (e) {}
+    }
+
+    function gsClearCheckoutInfo() {
+        try { localStorage.removeItem(GS_CHECKOUT_STORAGE_KEY); } catch (e) {}
+    }
+
+    function gsAttachPersistenceListeners() {
+        gsCheckoutFieldIds.forEach(function(id) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            el.addEventListener('input', function() {
+                clearTimeout(gsSaveTimeout);
+                gsSaveTimeout = setTimeout(gsSaveCheckoutInfo, 400);
+            });
+        });
+    }
+
+    // ─── Initial render ────────────────────────────────────────────────────
+
     document.addEventListener('DOMContentLoaded', function() {
         var cart = window.gapShopCart.get();
         var wrap = document.getElementById('gs-checkout-wrap');
@@ -1216,29 +1263,51 @@ function gapshop_sc_checkout($atts) {
             + '</div></div>';
 
         ['gs-st', 'gs-zp'].forEach(function(id) {
-                document.getElementById(id).addEventListener('input', gsScheduleTotals);
-            });
-
-            gsLoadCheckoutInfo();
-            gsAttachPersistenceListeners();
-            gsScheduleTotals();
+            document.getElementById(id).addEventListener('input', gsScheduleTotals);
         });
 
-function gsScheduleTotals() {
-        console.log('gsScheduleTotals fired');
+        gsLoadCheckoutInfo();
+        gsAttachPersistenceListeners();
+        gsScheduleTotals();
+    });
+
+    // ─── Totals calculation ────────────────────────────────────────────────
+
+    function gsScheduleTotals() {
         clearTimeout(gsTotalsTimeout);
         var zip = document.getElementById('gs-zp').value.trim();
         var state = document.getElementById('gs-st').value.trim();
-        console.log('zip:', zip, 'state:', state);
         if (zip.length < 5 || !state) return;
         gsTotalsTimeout = setTimeout(gsCalculateTotals, 600);
     }
 
     async function gsCalculateTotals() {
-        console.log('gsCalculateTotals firing, payload about to send');
         var cart = window.gapShopCart.get();
 
-        var payload = { ... };
+        var payload = {
+            email: document.getElementById('gs-em').value.trim(),
+            shippingAddress: {
+                line1: document.getElementById('gs-a1').value.trim(),
+                line2: document.getElementById('gs-a2').value.trim(),
+                city:  document.getElementById('gs-ci').value.trim(),
+                state: document.getElementById('gs-st').value.trim(),
+                zip:   document.getElementById('gs-zp').value.trim()
+            },
+            items: cart.items.map(function(i) {
+                return {
+                    productId: i.productId,
+                    variantId: i.variantId || null,
+                    name:      i.name,
+                    quantity:  i.quantity,
+                    unitPrice: i.unitPrice,
+                    selectedOptions: i.selectedOptions || []
+                };
+            })
+        };
+
+        var hdrs = { 'Content-Type': 'application/json', 'X-Tenant-Domain': window.location.hostname };
+        var token = localStorage.getItem('gapshop_token');
+        if (token) hdrs['Authorization'] = 'Bearer ' + token;
 
         try {
             var res = await fetch(GS_API_TOTALS, {
@@ -1246,18 +1315,12 @@ function gsScheduleTotals() {
                 headers: hdrs,
                 body: JSON.stringify(payload)
             });
-            console.log('calculate-totals status:', res.status);
-            if (!res.ok) {
-                const errBody = await res.text();
-                console.log('calculate-totals error body:', errBody);
-                return;
-            }
+            if (!res.ok) return;
             var data = await res.json();
-            console.log('calculate-totals data:', data);
             gsTotals = data;
             gsUpdateTotalsDisplay();
         } catch (e) {
-            console.log('calculate-totals exception:', e);
+            // silent — keep previous totals
         }
     }
 
@@ -1289,6 +1352,8 @@ function gsScheduleTotals() {
         document.getElementById('gs-row-total').textContent = '$' + gsTotals.total.toFixed(2);
         document.getElementById('gs-place').textContent = 'Place Order — $' + gsTotals.total.toFixed(2);
     }
+
+    // ─── Place order ────────────────────────────────────────────────────────
 
     async function gsPlaceOrder() {
         var btn = document.getElementById('gs-place');
@@ -1340,6 +1405,7 @@ function gsScheduleTotals() {
 
             if (res.ok && data.success) {
                 window.gapShopCart.clear();
+                gsClearCheckoutInfo();
                 // Show inline confirmation
                 document.getElementById('gs-checkout-wrap').innerHTML =
                     '<div style="max-width:560px;margin:40px auto;text-align:center;background:#fff;border-radius:12px;padding:40px;box-shadow:0 2px 12px rgba(0,0,0,0.08)">'
