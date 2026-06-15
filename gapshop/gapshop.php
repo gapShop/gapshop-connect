@@ -3,7 +3,7 @@
  * Plugin Name: gapShop
  * Plugin URI:  https://wp.gapshop.net
  * Description: Connects your WordPress site to the gapShop eCommerce platform.
- * Version:     1.0.37
+ * Version:     1.0.38
  * Author:      gapShop
  * License:     GPL2
  */
@@ -14,7 +14,7 @@ define('GAPSHOP_API',        'https://api.gapshop.net');
 define('GAPSHOP_ONBOARDING', 'https://onboarding.gapshop.net');
 define('GAPSHOP_PORTAL',     'https://gapshop.net');
 require_once plugin_dir_path(__FILE__) . 'gapshop-otp.php';
-define('GAPSHOP_VERSION',    '1.0.37');
+define('GAPSHOP_VERSION',    '1.0.38');
 
 add_filter('pre_set_site_transient_update_plugins', function($transient) {
     if (empty($transient->checked)) return $transient;
@@ -592,7 +592,20 @@ function gapshop_cart_js() {
             el.style.display = n > 0 ? 'inline-flex' : 'none';
         });
     }
-    document.addEventListener('DOMContentLoaded', gs_sync_counts);
+    document.addEventListener('DOMContentLoaded', function() {
+        var cart = window.gapShopCart.get();
+        var wrap = document.getElementById('gs-checkout-wrap');
+        // ... build wrap.innerHTML ...
+
+        ['gs-st', 'gs-zp'].forEach(function(id) {
+            document.getElementById(id).addEventListener('input', gsScheduleTotals);
+        });
+
+        gsLoadCheckoutInfo();
+        gsAttachPersistenceListeners();
+        gsScheduleTotals();
+    });
+
     document.addEventListener('gapshop:cart:updated', gs_sync_counts);
     </script>
     <?php
@@ -1203,45 +1216,29 @@ function gapshop_sc_checkout($atts) {
             + '</div></div>';
 
         ['gs-st', 'gs-zp'].forEach(function(id) {
-            document.getElementById(id).addEventListener('input', gsScheduleTotals);
-        });
-    });
+                document.getElementById(id).addEventListener('input', gsScheduleTotals);
+            });
 
-    function gsScheduleTotals() {
+            gsLoadCheckoutInfo();
+            gsAttachPersistenceListeners();
+            gsScheduleTotals();
+        });
+
+function gsScheduleTotals() {
+        console.log('gsScheduleTotals fired');
         clearTimeout(gsTotalsTimeout);
         var zip = document.getElementById('gs-zp').value.trim();
         var state = document.getElementById('gs-st').value.trim();
+        console.log('zip:', zip, 'state:', state);
         if (zip.length < 5 || !state) return;
         gsTotalsTimeout = setTimeout(gsCalculateTotals, 600);
     }
 
     async function gsCalculateTotals() {
+        console.log('gsCalculateTotals firing, payload about to send');
         var cart = window.gapShopCart.get();
 
-        var payload = {
-            email: document.getElementById('gs-em').value.trim(),
-            shippingAddress: {
-                line1: document.getElementById('gs-a1').value.trim(),
-                line2: document.getElementById('gs-a2').value.trim(),
-                city:  document.getElementById('gs-ci').value.trim(),
-                state: document.getElementById('gs-st').value.trim(),
-                zip:   document.getElementById('gs-zp').value.trim()
-            },
-            items: cart.items.map(function(i) {
-                return {
-                    productId: i.productId,
-                    variantId: i.variantId || null,
-                    name:      i.name,
-                    quantity:  i.quantity,
-                    unitPrice: i.unitPrice,
-                    selectedOptions: i.selectedOptions || []
-                };
-            })
-        };
-
-        var hdrs = { 'Content-Type': 'application/json', 'X-Tenant-Domain': window.location.hostname };
-        var token = localStorage.getItem('gapshop_token');
-        if (token) hdrs['Authorization'] = 'Bearer ' + token;
+        var payload = { ... };
 
         try {
             var res = await fetch(GS_API_TOTALS, {
@@ -1249,12 +1246,18 @@ function gapshop_sc_checkout($atts) {
                 headers: hdrs,
                 body: JSON.stringify(payload)
             });
-            if (!res.ok) return;
+            console.log('calculate-totals status:', res.status);
+            if (!res.ok) {
+                const errBody = await res.text();
+                console.log('calculate-totals error body:', errBody);
+                return;
+            }
             var data = await res.json();
+            console.log('calculate-totals data:', data);
             gsTotals = data;
             gsUpdateTotalsDisplay();
         } catch (e) {
-            // silent — keep previous totals
+            console.log('calculate-totals exception:', e);
         }
     }
 
