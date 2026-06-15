@@ -1271,7 +1271,7 @@ function gapshop_sc_checkout($atts) {
         gsScheduleTotals();
     });
 
-    // ─── Totals calculation ────────────────────────────────────────────────
+// ─── Totals calculation ────────────────────────────────────────────────
 
     function gsScheduleTotals() {
         clearTimeout(gsTotalsTimeout);
@@ -1406,7 +1406,6 @@ function gapshop_sc_checkout($atts) {
             if (res.ok && data.success) {
                 window.gapShopCart.clear();
                 gsClearCheckoutInfo();
-                // Show inline confirmation
                 document.getElementById('gs-checkout-wrap').innerHTML =
                     '<div style="max-width:560px;margin:40px auto;text-align:center;background:#fff;border-radius:12px;padding:40px;box-shadow:0 2px 12px rgba(0,0,0,0.08)">'
                     + '<div style="width:64px;height:64px;background:#e8f5e9;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:2rem;line-height:64px">✓</div>'
