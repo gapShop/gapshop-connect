@@ -3,7 +3,7 @@
  * Plugin Name: gapShop
  * Plugin URI:  https://wp.gapshop.net
  * Description: Connects your WordPress site to the gapShop eCommerce platform.
- * Version:     1.0.39
+ * Version:     1.0.40
  * Author:      gapShop
  * License:     GPL2
  */
@@ -14,7 +14,7 @@ define('GAPSHOP_API',        'https://api.gapshop.net');
 define('GAPSHOP_ONBOARDING', 'https://onboarding.gapshop.net');
 define('GAPSHOP_PORTAL',     'https://gapshop.net');
 require_once plugin_dir_path(__FILE__) . 'gapshop-otp.php';
-define('GAPSHOP_VERSION',    '1.0.39');
+define('GAPSHOP_VERSION',    '1.0.40');
 
 add_filter('pre_set_site_transient_update_plugins', function($transient) {
     if (empty($transient->checked)) return $transient;
@@ -970,6 +970,34 @@ function gapshop_sc_product($atts) {
                     <?php endforeach; ?>
                 </div>
                 <?php endif; ?>
+                <?php if (!empty($p['enableMembership'])): ?>
+                <div class="gapshop-membership" style="margin-bottom:16px;padding:12px;background:#f5f5f5;border-radius:8px">
+                    <label style="font-size:.85rem;font-weight:700;display:block;margin-bottom:8px">Purchase Option</label>
+                    <div style="margin-bottom:6px">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.88rem">
+                            <input type="radio" name="gs-purchase-type" value="onetime" id="gs-pt-onetime" checked onchange="gsToggleMembership(false)" />
+                            One-time purchase
+                        </label>
+                    </div>
+                    <div style="margin-bottom:8px">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.88rem">
+                            <input type="radio" name="gs-purchase-type" value="membership" id="gs-pt-membership" onchange="gsToggleMembership(true)" />
+                            Subscribe &amp; save
+                            <?php if (!empty($p['membershipDiscountPercent']) && $p['membershipDiscountPercent'] > 0): ?>
+                                (<?php echo esc_html($p['membershipDiscountPercent']); ?>% off each renewal)
+                            <?php endif; ?>
+                        </label>
+                    </div>
+                    <div id="gs-membership-freq" style="display:none">
+                        <label style="font-size:.8rem;font-weight:600;display:block;margin-bottom:4px">Deliver Every</label>
+                        <select id="gs-membership-frequency" style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:.88rem;max-width:240px">
+                            <?php foreach (array_filter(array_map('trim', explode(',', $p['membershipFrequenciesAllowed'] ?? ''))) as $f): ?>
+                            <option value="<?php echo esc_attr($f); ?>"><?php echo esc_html($f); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+                <?php endif; ?>
 
                 <div style="display:flex;gap:12px;align-items:center;margin-bottom:20px">
                     <div class="gapshop-qty-wrap">
@@ -1012,6 +1040,9 @@ function gapshop_sc_product($atts) {
         var i = document.getElementById('gs-qty');
         i.value = Math.max(1, Math.min(parseInt(i.max)||999, parseInt(i.value)+d));
     }
+    function gsToggleMembership(show) {
+        document.getElementById('gs-membership-freq').style.display = show ? 'block' : 'none';
+    }
 
     function gsCollectOptions() {
         var options = [];
@@ -1026,6 +1057,7 @@ function gapshop_sc_product($atts) {
                 });
             }
         });
+
         document.querySelectorAll('.gs-option-radio:checked').forEach(function(r) {
             options.push({
                 productOptionValueId: parseInt(r.dataset.valueId),
@@ -1063,10 +1095,15 @@ function gapshop_sc_product($atts) {
             var o = sel.options[sel.selectedIndex];
             vid = sel.value; vlabel = o.dataset.label || ''; price = parseFloat(o.dataset.price) || base;
         }
-        var selectedOptions = gsCollectOptions();
+    var selectedOptions = gsCollectOptions();
         var optionsPrice = selectedOptions.reduce(function(sum, o) { return sum + o.priceModifier; }, 0);
         price = price + optionsPrice;
-        window.gapShopCart.add(p, qty, vid, vlabel, price, selectedOptions);
+
+        var isMembership = document.getElementById('gs-pt-membership')?.checked === true;
+        var membershipFrequency = isMembership ? (document.getElementById('gs-membership-frequency')?.value || null) : null;
+
+        window.gapShopCart.add(p, qty, vid, vlabel, price, selectedOptions, isMembership, membershipFrequency);
+
         var t = document.getElementById('gs-atc-toast');
         t.textContent = p.name + ' added to cart!';
         t.style.display = 'block';
