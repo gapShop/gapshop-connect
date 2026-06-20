@@ -3,7 +3,7 @@
  * Plugin Name: gapShop
  * Plugin URI:  https://wp.gapshop.net
  * Description: Connects your WordPress site to the gapShop eCommerce platform.
- * Version:     1.0.40
+ * Version:     1.0.41
  * Author:      gapShop
  * License:     GPL2
  */
@@ -14,7 +14,7 @@ define('GAPSHOP_API',        'https://api.gapshop.net');
 define('GAPSHOP_ONBOARDING', 'https://onboarding.gapshop.net');
 define('GAPSHOP_PORTAL',     'https://gapshop.net');
 require_once plugin_dir_path(__FILE__) . 'gapshop-otp.php';
-define('GAPSHOP_VERSION',    '1.0.40');
+define('GAPSHOP_VERSION',    '1.0.41');
 
 add_filter('pre_set_site_transient_update_plugins', function($transient) {
     if (empty($transient->checked)) return $transient;
@@ -1392,73 +1392,104 @@ function gapshop_sc_checkout($atts) {
 
     // ─── Place order ────────────────────────────────────────────────────────
 
-    async function gsPlaceOrder() {
-        var btn = document.getElementById('gs-place');
-        var err = document.getElementById('gs-co-err');
-        btn.disabled = true;
-        btn.textContent = 'Placing Order...';
-        err.style.display = 'none';
+async function gsPlaceOrder() {
+    var btn = document.getElementById('gs-place');
+    var err = document.getElementById('gs-co-err');
+    btn.disabled = true;
+    btn.textContent = 'Placing Order...';
+    err.style.display = 'none';
 
-        var cart  = window.gapShopCart.get();
-        var token = localStorage.getItem('gapshop_token');
+    var cart  = window.gapShopCart.get();
+    var token = localStorage.getItem('gapshop_token');
 
-        var payload = {
-            firstName: document.getElementById('gs-fn').value.trim(),
-            lastName:  document.getElementById('gs-ln').value.trim(),
-            email:     document.getElementById('gs-em').value.trim(),
-            phone:     document.getElementById('gs-ph').value.trim(),
-            shippingAddress: {
-                line1: document.getElementById('gs-a1').value.trim(),
-                line2: document.getElementById('gs-a2').value.trim(),
-                city:  document.getElementById('gs-ci').value.trim(),
-                state: document.getElementById('gs-st').value.trim(),
-                zip:   document.getElementById('gs-zp').value.trim()
-            },
-            items: cart.items.map(function(i) {
-                return {
-                    productId: i.productId,
-                    variantId: i.variantId || null,
-                    name:      i.name,
-                    quantity:  i.quantity,
-                    unitPrice: i.unitPrice,
-                    selectedOptions: i.selectedOptions || []
-                };
-            })
-        };
+    var payload = {
+        firstName: document.getElementById('gs-fn').value.trim(),
+        lastName:  document.getElementById('gs-ln').value.trim(),
+        email:     document.getElementById('gs-em').value.trim(),
+        phone:     document.getElementById('gs-ph').value.trim(),
+        shippingAddress: {
+            line1: document.getElementById('gs-a1').value.trim(),
+            line2: document.getElementById('gs-a2').value.trim(),
+            city:  document.getElementById('gs-ci').value.trim(),
+            state: document.getElementById('gs-st').value.trim(),
+            zip:   document.getElementById('gs-zp').value.trim()
+        },
+        items: cart.items.map(function(i) {
+            return {
+                productId: i.productId,
+                variantId: i.variantId || null,
+                name:      i.name,
+                quantity:  i.quantity,
+                unitPrice: i.unitPrice,
+                selectedOptions: i.selectedOptions || []
+            };
+        })
+    };
 
-        var hdrs = {
-            'Content-Type':   'application/json',
-            'X-Tenant-Domain': window.location.hostname
-        };
-        if (token) hdrs['Authorization'] = 'Bearer ' + token;
+    var hdrs = {
+        'Content-Type':   'application/json',
+        'X-Tenant-Domain': window.location.hostname
+    };
+    if (token) hdrs['Authorization'] = 'Bearer ' + token;
 
-        try {
-            var res  = await fetch(GS_API_CHECKOUT, {
-                method:  'POST',
-                headers: hdrs,
-                body:    JSON.stringify(payload)
-            });
-            var data = await res.json();
+    try {
+        var res  = await fetch(GS_API_CHECKOUT, {
+            method:  'POST',
+            headers: hdrs,
+            body:    JSON.stringify(payload)
+        });
+        var data = await res.json();
 
-            if (res.ok && data.success) {
+        if (!res.ok) {
+            // ── Fraud block ──────────────────────────────────────
+            if (data.error === 'fraud_blocked') {
                 window.gapShopCart.clear();
                 gsClearCheckoutInfo();
                 document.getElementById('gs-checkout-wrap').innerHTML =
                     '<div style="max-width:560px;margin:40px auto;text-align:center;background:#fff;border-radius:12px;padding:40px;box-shadow:0 2px 12px rgba(0,0,0,0.08)">'
-                    + '<div style="width:64px;height:64px;background:#e8f5e9;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:2rem;line-height:64px">✓</div>'
-                    + '<h2 style="color:#2e7d32;margin:0 0 8px">Order Confirmed!</h2>'
-                    + '<p style="color:#888;margin:0 0 8px">Your order <strong>' + data.orderNumber + '</strong> has been placed.</p>'
-                    + '<p style="color:#888;margin:0 0 8px">Total: <strong>$' + parseFloat(data.total).toFixed(2) + '</strong></p>'
-                    + (payload.email ? '<p style="color:#888;font-size:.88rem;margin:0 0 24px">A confirmation email has been sent to ' + payload.email + '.</p>' : '<p style="color:#888;font-size:.88rem;margin:0 0 24px">Keep your order number for reference.</p>')
+                    + '<div style="width:64px;height:64px;background:#ffebee;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:2rem;line-height:64px">⚠</div>'
+                    + '<h2 style="color:#c62828;margin:0 0 8px">Order Could Not Be Processed</h2>'
+                    + '<p style="color:#888;margin:0 0 24px">We were unable to complete your order. If you believe this is an error, please contact support.</p>'
+                    + '<a href="/" class="gapshop-btn gapshop-btn-primary">Return to Store</a>'
+                    + '</div>';
+                return;
+            }
+            showErr(data.error || 'Order failed. Please try again.');
+            return;
+        }
+
+        if (res.ok && data.success) {
+            window.gapShopCart.clear();
+            gsClearCheckoutInfo();
+
+            // ── Fraud review (order created, held for review) ───
+            if (data.fraudReview) {
+                document.getElementById('gs-checkout-wrap').innerHTML =
+                    '<div style="max-width:560px;margin:40px auto;text-align:center;background:#fff;border-radius:12px;padding:40px;box-shadow:0 2px 12px rgba(0,0,0,0.08)">'
+                    + '<div style="width:64px;height:64px;background:#fff8e1;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:2rem;line-height:64px">⏳</div>'
+                    + '<h2 style="color:#f57f17;margin:0 0 8px">Order Under Review</h2>'
+                    + '<p style="color:#888;margin:0 0 8px">Your order <strong>' + data.orderNumber + '</strong> is being reviewed for your security.</p>'
+                    + (payload.email ? '<p style="color:#888;font-size:.88rem;margin:0 0 24px">We\'ll email ' + payload.email + ' once it\'s confirmed.</p>' : '<p style="color:#888;font-size:.88rem;margin:0 0 24px">Keep your order number for reference.</p>')
                     + '<a href="/" class="gapshop-btn gapshop-btn-primary">Continue Shopping</a>'
                     + '</div>';
-            } else {
-                showErr(data.error || 'Order failed. Please try again.');
+                return;
             }
-        } catch (e) {
-            showErr('Network error. Please try again.');
+
+            // ── Normal success path ──────────────────────────────
+            document.getElementById('gs-checkout-wrap').innerHTML =
+                '<div style="max-width:560px;margin:40px auto;text-align:center;background:#fff;border-radius:12px;padding:40px;box-shadow:0 2px 12px rgba(0,0,0,0.08)">'
+                + '<div style="width:64px;height:64px;background:#e8f5e9;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:2rem;line-height:64px">✓</div>'
+                + '<h2 style="color:#2e7d32;margin:0 0 8px">Order Confirmed!</h2>'
+                + '<p style="color:#888;margin:0 0 8px">Your order <strong>' + data.orderNumber + '</strong> has been placed.</p>'
+                + '<p style="color:#888;margin:0 0 8px">Total: <strong>$' + parseFloat(data.total).toFixed(2) + '</strong></p>'
+                + (payload.email ? '<p style="color:#888;font-size:.88rem;margin:0 0 24px">A confirmation email has been sent to ' + payload.email + '.</p>' : '<p style="color:#888;font-size:.88rem;margin:0 0 24px">Keep your order number for reference.</p>')
+                + '<a href="/" class="gapshop-btn gapshop-btn-primary">Continue Shopping</a>'
+                + '</div>';
         }
+    } catch (e) {
+        showErr('Network error. Please try again.');
     }
+}
 
     function showErr(msg) {
         var btn = document.getElementById('gs-place');
@@ -1468,9 +1499,6 @@ function gapshop_sc_checkout($atts) {
         err.textContent = msg;
         err.style.display = 'block';
     }
-    </script>
-    <?php
-    return ob_get_clean();
 }
 
 // ─── [gapshop_account] ────────────────────────────────────────────────────────
