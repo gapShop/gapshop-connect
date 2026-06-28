@@ -19,6 +19,7 @@ gapShop provides enterprise-grade infrastructure for small merchants.
 2. Activate the plugin.
 3. Click the "gapShop" menu item to connect your account.
 
+
 == Changelog ==
 = 1.0.0 =
 * Initial MVP release with Stripe Connect integration.

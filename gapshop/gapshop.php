@@ -3,7 +3,7 @@
  * Plugin Name: gapShop
  * Plugin URI:  https://wp.gapshop.net
  * Description: Connects your WordPress site to the gapShop eCommerce platform.
- * Version:     1.0.42
+ * Version:     1.0.43
  * Author:      gapShop
  * License:     GPL2
  */
@@ -14,7 +14,7 @@ define('GAPSHOP_API',        'https://api.gapshop.net');
 define('GAPSHOP_ONBOARDING', 'https://onboarding.gapshop.net');
 define('GAPSHOP_PORTAL',     'https://gapshop.net');
 require_once plugin_dir_path(__FILE__) . 'gapshop-otp.php';
-define('GAPSHOP_VERSION',    '1.0.42');
+define('GAPSHOP_VERSION',    '1.0.43');
 
 add_filter('pre_set_site_transient_update_plugins', function($transient) {
     if (empty($transient->checked)) return $transient;
@@ -1178,27 +1178,34 @@ function gapshop_sc_cart($atts) {
     return ob_get_clean();
 }
 
+<?php
 // ─── [gapshop_checkout] ──────────────────────────────────────────────────────
 
 add_shortcode('gapshop_checkout', 'gapshop_sc_checkout');
 function gapshop_sc_checkout($atts) {
-    $atts       = shortcode_atts(['cart_page' => 'cart'], $atts);
-    $api_checkout = GAPSHOP_API . '/api/store/checkout';
-    $api_totals   = GAPSHOP_API . '/api/store/checkout/calculate-totals';
-    $cart_page  = get_page_by_path($atts['cart_page']);
-    $cancel_url = $cart_page ? get_permalink($cart_page) : home_url('/cart');
+    $atts              = shortcode_atts(['cart_page' => 'cart'], $atts);
+    $api_checkout      = GAPSHOP_API . '/api/store/checkout';
+    $api_totals        = GAPSHOP_API . '/api/store/checkout/calculate-totals';
+    $api_coupon        = GAPSHOP_API . '/api/store/checkout/apply-coupon';
+    $api_remove_coupon = GAPSHOP_API . '/api/store/checkout/remove-coupon';
+    $cart_page         = get_page_by_path($atts['cart_page']);
+    $cancel_url        = $cart_page ? get_permalink($cart_page) : home_url('/cart');
 
     ob_start(); ?>
     <div class="gapshop-wrap" id="gs-checkout-wrap">
         <div class="gapshop-loading">Loading...</div>
     </div>
     <script>
-    var GS_API_CHECKOUT = <?php echo json_encode($api_checkout); ?>;
-    var GS_API_TOTALS   = <?php echo json_encode($api_totals); ?>;
+    var GS_API_CHECKOUT      = <?php echo json_encode($api_checkout); ?>;
+    var GS_API_TOTALS        = <?php echo json_encode($api_totals); ?>;
+    var GS_API_COUPON        = <?php echo json_encode($api_coupon); ?>;
+    var GS_API_REMOVE_COUPON = <?php echo json_encode($api_remove_coupon); ?>;
+
     var gsTotals = { subtotal: 0, discountAmount: 0, freeShipping: false, shipping: 0, tax: 0, deliveryFee: 0, deliveryFeeLabel: null, total: 0 };
     var gsTotalsTimeout;
+    var gsAppliedCoupon = null;
 
-    // ─── Checkout info persistence (localStorage) ─────────────────────────
+    // ─── Checkout info persistence ─────────────────────────────────────────
     var GS_CHECKOUT_STORAGE_KEY = 'gapshop_checkout_info';
     var gsCheckoutFieldIds = ['gs-fn', 'gs-ln', 'gs-em', 'gs-ph', 'gs-a1', 'gs-a2', 'gs-ci', 'gs-st', 'gs-zp'];
     var gsSaveTimeout;
@@ -1210,9 +1217,7 @@ function gapshop_sc_checkout($atts) {
             if (!el) return;
             data[id] = el.value;
         });
-        try {
-            localStorage.setItem(GS_CHECKOUT_STORAGE_KEY, JSON.stringify(data));
-        } catch (e) {}
+        try { localStorage.setItem(GS_CHECKOUT_STORAGE_KEY, JSON.stringify(data)); } catch(e) {}
     }
 
     function gsLoadCheckoutInfo() {
@@ -1225,11 +1230,11 @@ function gapshop_sc_checkout($atts) {
                 if (!el || !(id in data)) return;
                 el.value = data[id];
             });
-        } catch (e) {}
+        } catch(e) {}
     }
 
     function gsClearCheckoutInfo() {
-        try { localStorage.removeItem(GS_CHECKOUT_STORAGE_KEY); } catch (e) {}
+        try { localStorage.removeItem(GS_CHECKOUT_STORAGE_KEY); } catch(e) {}
     }
 
     function gsAttachPersistenceListeners() {
@@ -1243,6 +1248,83 @@ function gapshop_sc_checkout($atts) {
         });
     }
 
+    // ─── Coupon ────────────────────────────────────────────────────────────
+
+    async function gsApplyCoupon() {
+        var input = document.getElementById('gs-coupon-input');
+        var msgEl = document.getElementById('gs-coupon-msg');
+        var code  = input ? input.value.trim().toUpperCase() : '';
+        if (!code) return;
+
+        msgEl.style.color = '#888';
+        msgEl.textContent = 'Applying...';
+
+        var hdrs  = { 'Content-Type': 'application/json', 'X-Tenant-Domain': window.location.hostname };
+        var token = localStorage.getItem('gapshop_token');
+        if (token) hdrs['Authorization'] = 'Bearer ' + token;
+
+        try {
+            var res  = await fetch(GS_API_COUPON, {
+                method: 'POST', headers: hdrs,
+                body: JSON.stringify({ couponCode: code })
+            });
+            var data = await res.json();
+
+            if (res.ok) {
+                gsAppliedCoupon         = code;
+                input.value             = '';
+                gsTotals.discountAmount = data.discountAmount || 0;
+                gsTotals.freeShipping   = data.freeShipping   || false;
+                gsUpdateTotalsDisplay();
+                gsCouponShowApplied(code);
+            } else {
+                msgEl.style.color = '#c62828';
+                msgEl.textContent = data.error || 'Invalid coupon code.';
+            }
+        } catch(e) {
+            msgEl.style.color = '#c62828';
+            msgEl.textContent = 'Could not apply coupon. Please try again.';
+        }
+    }
+
+    async function gsRemoveCoupon() {
+        var hdrs  = { 'Content-Type': 'application/json', 'X-Tenant-Domain': window.location.hostname };
+        var token = localStorage.getItem('gapshop_token');
+        if (token) hdrs['Authorization'] = 'Bearer ' + token;
+
+        try { await fetch(GS_API_REMOVE_COUPON, { method: 'POST', headers: hdrs }); } catch(e) {}
+
+        gsAppliedCoupon         = null;
+        gsTotals.discountAmount = 0;
+        gsTotals.freeShipping   = false;
+        gsUpdateTotalsDisplay();
+        gsCouponShowInput();
+        gsScheduleTotals();
+    }
+
+    function gsCouponShowApplied(code) {
+        var wrap = document.getElementById('gs-coupon-wrap');
+        if (!wrap) return;
+        wrap.innerHTML =
+            '<div style="display:flex;align-items:center;justify-content:space-between">'
+            + '<span style="font-size:.85rem;color:#2e7d32;font-weight:600">\uD83C\uDFF7\uFE0F ' + code + ' applied</span>'
+            + '<button onclick="gsRemoveCoupon()" style="background:none;border:none;color:#aaa;font-size:.78rem;cursor:pointer;text-decoration:underline">Remove</button>'
+            + '</div>';
+    }
+
+    function gsCouponShowInput() {
+        var wrap = document.getElementById('gs-coupon-wrap');
+        if (!wrap) return;
+        wrap.innerHTML =
+            '<div style="display:flex;gap:8px">'
+            + '<input id="gs-coupon-input" type="text" placeholder="Coupon code"'
+            + ' style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:.85rem;text-transform:uppercase;outline:none"'
+            + ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();gsApplyCoupon()}" />'
+            + '<button onclick="gsApplyCoupon()" style="padding:8px 14px;background:#3f51b5;color:#fff;border:none;border-radius:6px;font-size:.85rem;cursor:pointer;white-space:nowrap">Apply</button>'
+            + '</div>'
+            + '<div id="gs-coupon-msg" style="font-size:.78rem;margin-top:6px;min-height:16px"></div>';
+    }
+
     // ─── Initial render ────────────────────────────────────────────────────
 
     document.addEventListener('DOMContentLoaded', function() {
@@ -1254,7 +1336,7 @@ function gapshop_sc_checkout($atts) {
             return;
         }
 
-        var sub   = window.gapShopCart.subtotal();
+        var sub = window.gapShopCart.subtotal();
         gsTotals.subtotal = sub;
         gsTotals.total    = sub;
         var token = localStorage.getItem('gapshop_token');
@@ -1262,7 +1344,10 @@ function gapshop_sc_checkout($atts) {
         wrap.innerHTML =
             '<div style="display:grid;grid-template-columns:1fr 320px;gap:32px;align-items:start">'
             + '<div>'
-            + (!token ? '<div style="background:#fff3e0;border-left:4px solid #f57c00;padding:12px 16px;border-radius:4px;margin-bottom:20px;font-size:.88rem">💡 <a href="/account/?redirect='+encodeURIComponent(window.location.href)+'" style="color:#e65100;font-weight:600">Sign in</a> to save your order history.</div>' : '')
+            + (!token
+                ? '<div style="background:#fff3e0;border-left:4px solid #f57c00;padding:12px 16px;border-radius:4px;margin-bottom:20px;font-size:.88rem">'
+                  + '\uD83D\uDCA1 <a href="/account/?redirect=' + encodeURIComponent(window.location.href) + '" style="color:#e65100;font-weight:600">Sign in</a> to save your order history.</div>'
+                : '')
             + '<h3 style="margin:0 0 16px;font-size:1rem;font-weight:700">Contact Information</h3>'
             + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'
             + '<input id="gs-fn" class="gapshop-field" type="text" placeholder="First Name" />'
@@ -1278,25 +1363,43 @@ function gapshop_sc_checkout($atts) {
             + '<input id="gs-st" style="padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-size:.9rem;box-sizing:border-box" type="text" placeholder="State" maxlength="2" />'
             + '<input id="gs-zp" style="padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-size:.9rem;box-sizing:border-box" type="text" placeholder="ZIP" />'
             + '</div>'
-            + '<button id="gs-place" class="gapshop-btn gapshop-btn-primary" style="width:100%;padding:14px;font-size:1rem" onclick="gsPlaceOrder()">Place Order — $'+sub.toFixed(2)+'</button>'
+            + '<button id="gs-place" class="gapshop-btn gapshop-btn-primary" style="width:100%;padding:14px;font-size:1rem" onclick="gsPlaceOrder()">Place Order \u2014 $' + sub.toFixed(2) + '</button>'
             + '<div id="gs-co-err" class="gapshop-msg-error" style="display:none;margin-top:12px"></div>'
             + '</div>'
+
+            // ── Order summary ──
             + '<div class="gapshop-summary">'
             + '<h3 style="margin:0 0 16px;font-size:1rem;font-weight:700">Order Summary</h3>'
-            + cart.items.map(function(i){
-            return '<div style="padding:6px 0;font-size:.85rem;border-bottom:1px solid #f5f5f5">'
-                + '<div style="display:flex;justify-content:space-between"><span>'+i.name+' × '+i.quantity+'</span><span style="font-weight:600">$'+(i.unitPrice*i.quantity).toFixed(2)+'</span></div>'
-                + (i.selectedOptions && i.selectedOptions.length ? '<div style="margin-top:4px;font-size:.75rem;color:#888">'+i.selectedOptions.map(function(o){ return '<div><strong>'+o.label+':</strong> '+o.value+'</div>'; }).join('')+'</div>' : '')
-                + '</div>';
+            + cart.items.map(function(i) {
+                return '<div style="padding:6px 0;font-size:.85rem;border-bottom:1px solid #f5f5f5">'
+                    + '<div style="display:flex;justify-content:space-between">'
+                    + '<span>' + i.name + ' \xD7 ' + i.quantity + '</span>'
+                    + '<span style="font-weight:600">$' + (i.unitPrice * i.quantity).toFixed(2) + '</span>'
+                    + '</div>'
+                    + (i.selectedOptions && i.selectedOptions.length
+                        ? '<div style="margin-top:4px;font-size:.75rem;color:#888">'
+                          + i.selectedOptions.map(function(o) { return '<div><strong>' + o.label + ':</strong> ' + o.value + '</div>'; }).join('')
+                          + '</div>'
+                        : '')
+                    + '</div>';
               }).join('')
+
             + '<div id="gs-totals-rows" style="margin-top:8px">'
-            + '<div style="display:flex;justify-content:space-between;font-size:.85rem;padding:4px 0"><span>Subtotal</span><span id="gs-row-subtotal">$'+sub.toFixed(2)+'</span></div>'
-            + '<div id="gs-row-discount-wrap" style="display:none;justify-content:space-between;font-size:.85rem;padding:4px 0"><span>Discount</span><span id="gs-row-discount" style="color:#2e7d32">-$0.00</span></div>'
-            + '<div style="display:flex;justify-content:space-between;font-size:.85rem;padding:4px 0"><span>Shipping</span><span id="gs-row-shipping">—</span></div>'
+            + '<div style="display:flex;justify-content:space-between;font-size:.85rem;padding:4px 0"><span>Subtotal</span><span id="gs-row-subtotal">$' + sub.toFixed(2) + '</span></div>'
+            + '<div id="gs-row-discount-wrap" style="display:none;justify-content:space-between;font-size:.85rem;padding:4px 0;color:#2e7d32"><span>Discount</span><span id="gs-row-discount">-$0.00</span></div>'
+            + '<div style="display:flex;justify-content:space-between;font-size:.85rem;padding:4px 0"><span>Shipping</span><span id="gs-row-shipping">\u2014</span></div>'
             + '<div style="display:flex;justify-content:space-between;font-size:.85rem;padding:4px 0"><span>Tax</span><span id="gs-row-tax">$0.00</span></div>'
             + '<div id="gs-row-fee-wrap" style="display:none;justify-content:space-between;font-size:.85rem;padding:4px 0"><span id="gs-row-fee-label">Fee</span><span id="gs-row-fee">$0.00</span></div>'
             + '</div>'
-            + '<div style="display:flex;justify-content:space-between;padding:12px 0 0;font-size:1rem;font-weight:700;border-top:2px solid #eee;margin-top:8px"><span>Total</span><span id="gs-row-total" style="color:#1565c0">$'+sub.toFixed(2)+'</span></div>'
+            + '<div style="display:flex;justify-content:space-between;padding:12px 0 0;font-size:1rem;font-weight:700;border-top:2px solid #eee;margin-top:8px">'
+            + '<span>Total</span><span id="gs-row-total" style="color:#1565c0">$' + sub.toFixed(2) + '</span>'
+            + '</div>'
+
+            // Coupon
+            + '<div style="margin-top:16px;padding-top:16px;border-top:1px solid #f0f0f0">'
+            + '<div id="gs-coupon-wrap"></div>'
+            + '</div>'
+
             + '</div></div>';
 
         ['gs-st', 'gs-zp'].forEach(function(id) {
@@ -1305,60 +1408,48 @@ function gapshop_sc_checkout($atts) {
 
         gsLoadCheckoutInfo();
         gsAttachPersistenceListeners();
+        gsCouponShowInput();
         gsScheduleTotals();
     });
 
-// ─── Totals calculation ────────────────────────────────────────────────
+    // ─── Totals ────────────────────────────────────────────────────────────
 
     function gsScheduleTotals() {
         clearTimeout(gsTotalsTimeout);
-        var zip = document.getElementById('gs-zp').value.trim();
+        var zip   = document.getElementById('gs-zp').value.trim();
         var state = document.getElementById('gs-st').value.trim();
         if (zip.length < 5 || !state) return;
         gsTotalsTimeout = setTimeout(gsCalculateTotals, 600);
     }
 
     async function gsCalculateTotals() {
-        var cart = window.gapShopCart.get();
-
+        var cart    = window.gapShopCart.get();
         var payload = {
-            email: document.getElementById('gs-em').value.trim(),
+            email:      document.getElementById('gs-em').value.trim(),
+            couponCode: gsAppliedCoupon,
             shippingAddress: {
-                line1: document.getElementById('gs-a1').value.trim(),
-                line2: document.getElementById('gs-a2').value.trim(),
-                city:  document.getElementById('gs-ci').value.trim(),
-                state: document.getElementById('gs-st').value.trim(),
-                zip:   document.getElementById('gs-zp').value.trim()
+                line1:  document.getElementById('gs-a1').value.trim(),
+                line2:  document.getElementById('gs-a2').value.trim(),
+                city:   document.getElementById('gs-ci').value.trim(),
+                state:  document.getElementById('gs-st').value.trim(),
+                zip:    document.getElementById('gs-zp').value.trim()
             },
             items: cart.items.map(function(i) {
-                return {
-                    productId: i.productId,
-                    variantId: i.variantId || null,
-                    name:      i.name,
-                    quantity:  i.quantity,
-                    unitPrice: i.unitPrice,
-                    selectedOptions: i.selectedOptions || []
-                };
+                return { productId: i.productId, variantId: i.variantId || null, name: i.name,
+                         quantity: i.quantity, unitPrice: i.unitPrice, selectedOptions: i.selectedOptions || [] };
             })
         };
 
-        var hdrs = { 'Content-Type': 'application/json', 'X-Tenant-Domain': window.location.hostname };
+        var hdrs  = { 'Content-Type': 'application/json', 'X-Tenant-Domain': window.location.hostname };
         var token = localStorage.getItem('gapshop_token');
         if (token) hdrs['Authorization'] = 'Bearer ' + token;
 
         try {
-            var res = await fetch(GS_API_TOTALS, {
-                method: 'POST',
-                headers: hdrs,
-                body: JSON.stringify(payload)
-            });
+            var res = await fetch(GS_API_TOTALS, { method: 'POST', headers: hdrs, body: JSON.stringify(payload) });
             if (!res.ok) return;
-            var data = await res.json();
-            gsTotals = data;
+            gsTotals = await res.json();
             gsUpdateTotalsDisplay();
-        } catch (e) {
-            // silent — keep previous totals
-        }
+        } catch(e) {}
     }
 
     function gsUpdateTotalsDisplay() {
@@ -1373,8 +1464,7 @@ function gapshop_sc_checkout($atts) {
         }
 
         document.getElementById('gs-row-shipping').textContent =
-            gsTotals.freeShipping ? 'FREE' : '$' + gsTotals.shipping.toFixed(2);
-
+            gsTotals.freeShipping ? 'FREE' : (gsTotals.shipping > 0 ? '$' + gsTotals.shipping.toFixed(2) : '\u2014');
         document.getElementById('gs-row-tax').textContent = '$' + gsTotals.tax.toFixed(2);
 
         var feeWrap = document.getElementById('gs-row-fee-wrap');
@@ -1387,109 +1477,99 @@ function gapshop_sc_checkout($atts) {
         }
 
         document.getElementById('gs-row-total').textContent = '$' + gsTotals.total.toFixed(2);
-        document.getElementById('gs-place').textContent = 'Place Order — $' + gsTotals.total.toFixed(2);
+        var btn = document.getElementById('gs-place');
+        if (btn) btn.textContent = 'Place Order \u2014 $' + gsTotals.total.toFixed(2);
     }
 
     // ─── Place order ────────────────────────────────────────────────────────
 
-async function gsPlaceOrder() {
-    var btn = document.getElementById('gs-place');
-    var err = document.getElementById('gs-co-err');
-    btn.disabled = true;
-    btn.textContent = 'Placing Order...';
-    err.style.display = 'none';
+    async function gsPlaceOrder() {
+        var btn = document.getElementById('gs-place');
+        var err = document.getElementById('gs-co-err');
+        btn.disabled    = true;
+        btn.textContent = 'Placing Order...';
+        err.style.display = 'none';
 
-    var cart  = window.gapShopCart.get();
-    var token = localStorage.getItem('gapshop_token');
+        var cart  = window.gapShopCart.get();
+        var token = localStorage.getItem('gapshop_token');
 
-    var payload = {
-        firstName: document.getElementById('gs-fn').value.trim(),
-        lastName:  document.getElementById('gs-ln').value.trim(),
-        email:     document.getElementById('gs-em').value.trim(),
-        phone:     document.getElementById('gs-ph').value.trim(),
-        shippingAddress: {
-            line1: document.getElementById('gs-a1').value.trim(),
-            line2: document.getElementById('gs-a2').value.trim(),
-            city:  document.getElementById('gs-ci').value.trim(),
-            state: document.getElementById('gs-st').value.trim(),
-            zip:   document.getElementById('gs-zp').value.trim()
-        },
-        items: cart.items.map(function(i) {
-            return {
-                productId: i.productId,
-                variantId: i.variantId || null,
-                name:      i.name,
-                quantity:  i.quantity,
-                unitPrice: i.unitPrice,
-                selectedOptions: i.selectedOptions || []
-            };
-        })
-    };
+        var payload = {
+            firstName:  document.getElementById('gs-fn').value.trim(),
+            lastName:   document.getElementById('gs-ln').value.trim(),
+            email:      document.getElementById('gs-em').value.trim(),
+            phone:      document.getElementById('gs-ph').value.trim(),
+            couponCode: gsAppliedCoupon,
+            shippingAddress: {
+                line1:  document.getElementById('gs-a1').value.trim(),
+                line2:  document.getElementById('gs-a2').value.trim(),
+                city:   document.getElementById('gs-ci').value.trim(),
+                state:  document.getElementById('gs-st').value.trim(),
+                zip:    document.getElementById('gs-zp').value.trim()
+            },
+            items: cart.items.map(function(i) {
+                return { productId: i.productId, variantId: i.variantId || null, name: i.name,
+                         quantity: i.quantity, unitPrice: i.unitPrice, selectedOptions: i.selectedOptions || [] };
+            })
+        };
 
-    var hdrs = {
-        'Content-Type':   'application/json',
-        'X-Tenant-Domain': window.location.hostname
-    };
-    if (token) hdrs['Authorization'] = 'Bearer ' + token;
+        var hdrs = { 'Content-Type': 'application/json', 'X-Tenant-Domain': window.location.hostname };
+        if (token) hdrs['Authorization'] = 'Bearer ' + token;
 
-    try {
-        var res  = await fetch(GS_API_CHECKOUT, {
-            method:  'POST',
-            headers: hdrs,
-            body:    JSON.stringify(payload)
-        });
-        var data = await res.json();
+        try {
+            var res  = await fetch(GS_API_CHECKOUT, { method: 'POST', headers: hdrs, body: JSON.stringify(payload) });
+            var data = await res.json();
 
-        if (!res.ok) {
-            // ── Fraud block ──────────────────────────────────────
-            if (data.error === 'fraud_blocked') {
+            if (!res.ok) {
+                if (data.error === 'fraud_blocked') {
+                    window.gapShopCart.clear();
+                    gsClearCheckoutInfo();
+                    document.getElementById('gs-checkout-wrap').innerHTML =
+                        '<div style="max-width:560px;margin:40px auto;text-align:center;background:#fff;border-radius:12px;padding:40px;box-shadow:0 2px 12px rgba(0,0,0,0.08)">'
+                        + '<div style="width:64px;height:64px;background:#ffebee;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:2rem;line-height:64px">\u26A0</div>'
+                        + '<h2 style="color:#c62828;margin:0 0 8px">Order Could Not Be Processed</h2>'
+                        + '<p style="color:#888;margin:0 0 24px">We were unable to complete your order. If you believe this is an error, please contact support.</p>'
+                        + '<a href="/" class="gapshop-btn gapshop-btn-primary">Return to Store</a>'
+                        + '</div>';
+                    return;
+                }
+                showErr(data.error || 'Order failed. Please try again.');
+                return;
+            }
+
+            if (data.success) {
                 window.gapShopCart.clear();
                 gsClearCheckoutInfo();
+
+                if (data.fraudReview) {
+                    document.getElementById('gs-checkout-wrap').innerHTML =
+                        '<div style="max-width:560px;margin:40px auto;text-align:center;background:#fff;border-radius:12px;padding:40px;box-shadow:0 2px 12px rgba(0,0,0,0.08)">'
+                        + '<div style="width:64px;height:64px;background:#fff8e1;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:2rem;line-height:64px">\u23F3</div>'
+                        + '<h2 style="color:#f57f17;margin:0 0 8px">Order Under Review</h2>'
+                        + '<p style="color:#888;margin:0 0 8px">Your order <strong>' + data.orderNumber + '</strong> is being reviewed for your security.</p>'
+                        + (payload.email
+                            ? '<p style="color:#888;font-size:.88rem;margin:0 0 24px">We\'ll email ' + payload.email + ' once it\'s confirmed.</p>'
+                            : '<p style="color:#888;font-size:.88rem;margin:0 0 24px">Keep your order number for reference.</p>')
+                        + '<a href="/" class="gapshop-btn gapshop-btn-primary">Continue Shopping</a>'
+                        + '</div>';
+                    return;
+                }
+
                 document.getElementById('gs-checkout-wrap').innerHTML =
                     '<div style="max-width:560px;margin:40px auto;text-align:center;background:#fff;border-radius:12px;padding:40px;box-shadow:0 2px 12px rgba(0,0,0,0.08)">'
-                    + '<div style="width:64px;height:64px;background:#ffebee;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:2rem;line-height:64px">⚠</div>'
-                    + '<h2 style="color:#c62828;margin:0 0 8px">Order Could Not Be Processed</h2>'
-                    + '<p style="color:#888;margin:0 0 24px">We were unable to complete your order. If you believe this is an error, please contact support.</p>'
-                    + '<a href="/" class="gapshop-btn gapshop-btn-primary">Return to Store</a>'
-                    + '</div>';
-                return;
-            }
-            showErr(data.error || 'Order failed. Please try again.');
-            return;
-        }
-
-        if (res.ok && data.success) {
-            window.gapShopCart.clear();
-            gsClearCheckoutInfo();
-
-            // ── Fraud review (order created, held for review) ───
-            if (data.fraudReview) {
-                document.getElementById('gs-checkout-wrap').innerHTML =
-                    '<div style="max-width:560px;margin:40px auto;text-align:center;background:#fff;border-radius:12px;padding:40px;box-shadow:0 2px 12px rgba(0,0,0,0.08)">'
-                    + '<div style="width:64px;height:64px;background:#fff8e1;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:2rem;line-height:64px">⏳</div>'
-                    + '<h2 style="color:#f57f17;margin:0 0 8px">Order Under Review</h2>'
-                    + '<p style="color:#888;margin:0 0 8px">Your order <strong>' + data.orderNumber + '</strong> is being reviewed for your security.</p>'
-                    + (payload.email ? '<p style="color:#888;font-size:.88rem;margin:0 0 24px">We\'ll email ' + payload.email + ' once it\'s confirmed.</p>' : '<p style="color:#888;font-size:.88rem;margin:0 0 24px">Keep your order number for reference.</p>')
+                    + '<div style="width:64px;height:64px;background:#e8f5e9;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:2rem;line-height:64px">\u2713</div>'
+                    + '<h2 style="color:#2e7d32;margin:0 0 8px">Order Confirmed!</h2>'
+                    + '<p style="color:#888;margin:0 0 8px">Your order <strong>' + data.orderNumber + '</strong> has been placed.</p>'
+                    + '<p style="color:#888;margin:0 0 8px">Total: <strong>$' + parseFloat(data.total).toFixed(2) + '</strong></p>'
+                    + (payload.email
+                        ? '<p style="color:#888;font-size:.88rem;margin:0 0 24px">A confirmation email has been sent to ' + payload.email + '.</p>'
+                        : '<p style="color:#888;font-size:.88rem;margin:0 0 24px">Keep your order number for reference.</p>')
                     + '<a href="/" class="gapshop-btn gapshop-btn-primary">Continue Shopping</a>'
                     + '</div>';
-                return;
             }
-
-            // ── Normal success path ──────────────────────────────
-            document.getElementById('gs-checkout-wrap').innerHTML =
-                '<div style="max-width:560px;margin:40px auto;text-align:center;background:#fff;border-radius:12px;padding:40px;box-shadow:0 2px 12px rgba(0,0,0,0.08)">'
-                + '<div style="width:64px;height:64px;background:#e8f5e9;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:2rem;line-height:64px">✓</div>'
-                + '<h2 style="color:#2e7d32;margin:0 0 8px">Order Confirmed!</h2>'
-                + '<p style="color:#888;margin:0 0 8px">Your order <strong>' + data.orderNumber + '</strong> has been placed.</p>'
-                + '<p style="color:#888;margin:0 0 8px">Total: <strong>$' + parseFloat(data.total).toFixed(2) + '</strong></p>'
-                + (payload.email ? '<p style="color:#888;font-size:.88rem;margin:0 0 24px">A confirmation email has been sent to ' + payload.email + '.</p>' : '<p style="color:#888;font-size:.88rem;margin:0 0 24px">Keep your order number for reference.</p>')
-                + '<a href="/" class="gapshop-btn gapshop-btn-primary">Continue Shopping</a>'
-                + '</div>';
+        } catch(e) {
+            showErr('Network error. Please try again.');
         }
-    } catch (e) {
-        showErr('Network error. Please try again.');
     }
-}
 
     function showErr(msg) {
         var btn = document.getElementById('gs-place');
